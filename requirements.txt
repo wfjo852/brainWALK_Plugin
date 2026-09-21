@@ -1,0 +1,18 @@
+# 라이다 G4 + ANT+ 통합 시스템 - 의존성 패키지
+
+# 라이다
+pyserial>=3.5
+matplotlib>=3.5.0
+
+# 마우스 제어
+pyautogui>=0.9.53
+
+# 멀티 모니터
+screeninfo>=0.8
+
+# ANT+ 심박계
+openant>=1.3
+pyusb>=1.3
+
+# 빌드용
+pyinstaller>=5.0

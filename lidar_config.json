@@ -1,0 +1,63 @@
+{
+    "connection": {
+        "port": "COM4",
+        "baudrate": 230400,
+        "scan_frequency": 12.0
+    },
+    "lidar_position": {
+        "position": "bottom",
+        "flip_x": true,
+        "flip_y": false,
+        "rotation": 90,
+        "scan_start_angle": 90,
+        "scan_end_angle": 270
+    },
+    "touch_area": {
+        "x": -300,
+        "y": 330,
+        "width": 600,
+        "height": -300
+    },
+    "touch_offset": {
+        "x_mm": 0.0,
+        "y_mm": 0.0
+    },
+    "touch_detection": {
+        "threshold_mm": 1000,
+        "min_points": 1,
+        "click_cooldown_ms": 30
+    },
+    "mouse_control": {
+        "enabled": false,
+        "monitor_index": 0,
+        "screen_width": 2560,
+        "screen_height": 1440,
+        "screen_offset_x": 0,
+        "screen_offset_y": 0
+    },
+    "visualization": {
+        "plot_xlim": [
+            -1500,
+            1500
+        ],
+        "plot_ylim": [
+            -500,
+            500
+        ],
+        "point_size": 2,
+        "touch_point_size": 50
+    },
+    "links": {
+        "download_url": "https://ydlidar.com/download/category/tool-sdk-ros/",
+        "manual_url": "https://ydlidar.com/static/upload/file/20260615/1781511390297792.pdf"
+    },
+    "monitors": [
+        {
+            "name": "모니터 1: 2560x1440 (0,0)",
+            "x": 0,
+            "y": 0,
+            "width": 2560,
+            "height": 1440
+        }
+    ]
+}

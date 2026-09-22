@@ -82,12 +82,17 @@ class AntController:
 
         self.device_type = 120
         self.device_id = 0
+        self.transmission_type = 0
         self.hr_period = 8070
         self.rf_freq = 57
 
         self.on_bpm: Optional[Callable] = None
         self.on_status: Optional[Callable] = None
         self.on_error: Optional[Callable] = None
+        self.on_device_found: Optional[Callable] = None   # (device_id, device_type, transmission_type)
+        self.on_scan_done: Optional[Callable] = None
+        self.on_connected: Optional[Callable] = None       # (device_id)
+        self.on_disconnected: Optional[Callable] = None
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -97,6 +102,16 @@ class AntController:
         self.last_bpm = 0
         self.is_running = False
 
+        self._scanning = False
+        self._scan_node = None
+        self._scan_thread: Optional[threading.Thread] = None
+
+        self._connected = False
+        self._last_data_time = 0.0
+        self._watchdog_stop: Optional[threading.Event] = None
+        self._watchdog_thread: Optional[threading.Thread] = None
+        self.disconnect_timeout = 6.0  # 이 시간(초) 동안 데이터가 없으면 연결 해제로 판단
+
     def start(self):
         if self._running:
             return
@@ -104,6 +119,71 @@ class AntController:
         self.is_running = True
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
+
+    def start_scan(self, duration: float = 10.0):
+        """주변 ANT+ 장비 검색 (self.on_device_found로 발견된 장비 콜백)"""
+        if self._scanning or self._running:
+            return
+        self._scanning = True
+        self._scan_thread = threading.Thread(target=self._scan_loop, args=(duration,), daemon=True)
+        self._scan_thread.start()
+
+    @property
+    def is_scanning(self) -> bool:
+        return self._scanning
+
+    def stop_scan(self):
+        self._scanning = False
+        node = self._scan_node
+        if node is not None:
+            try:
+                node.stop()
+            except Exception:
+                pass
+
+    def _scan_loop(self, duration: float):
+        _patch_usb_backend()
+
+        from openant.easy.node import Node
+        from openant.devices import ANTPLUS_NETWORK_KEY
+        from openant.devices.scanner import Scanner
+
+        found_keys = set()
+        node = Node()
+        self._scan_node = node
+        timer = None
+        try:
+            node.set_network_key(0x00, ANTPLUS_NETWORK_KEY)
+            scanner = Scanner(node, device_id=0, device_type=0)
+
+            def on_found(device_tuple):
+                dev_id, dev_type, dev_trans = device_tuple
+                key = (dev_id, dev_type, dev_trans)
+                if key in found_keys:
+                    return
+                found_keys.add(key)
+                if self.on_device_found:
+                    self.on_device_found(dev_id, dev_type, dev_trans)
+
+            scanner.on_found = on_found
+
+            timer = threading.Timer(duration, node.stop)
+            timer.daemon = True
+            timer.start()
+
+            self._notify_status(f"장비 검색 중... ({int(duration)}초)")
+            node.start()  # 블로킹 — stop_scan() 또는 timeout으로 탈출
+        except Exception as e:
+            self._notify_error(f"스캔 오류: {e}")
+        finally:
+            if timer is not None:
+                timer.cancel()
+            self._scan_node = None
+            self._scanning = False
+            _release_usb()
+            _purge_modules()
+            if self.on_scan_done:
+                self.on_scan_done()
 
     def stop(self):
         self._running = False
@@ -151,13 +231,24 @@ class AntController:
             node.set_network_key(0, ANTPLUS_NETWORK_KEY)
 
             channel = node.new_channel(0x00)
-            channel.set_id(self.device_id, self.device_type, 0)
+            channel.set_id(self.device_id, self.device_type, self.transmission_type)
             channel.set_period(self.hr_period)
             channel.set_rf_freq(self.rf_freq)
+
+            self._connected = False
+            self._last_data_time = time.time()
+            self._watchdog_stop = threading.Event()
+            self._watchdog_thread = threading.Thread(
+                target=self._watchdog_loop, args=(self._watchdog_stop,), daemon=True)
+            self._watchdog_thread.start()
 
             def on_data(data):
                 if not data or len(data) < 8:
                     return
+                self._last_data_time = time.time()
+                if not self._connected:
+                    self._connected = True
+                    self._notify_connected(self.device_id)
                 now = time.time()
                 if now - self._last_send_time < 1.0:
                     return
@@ -180,10 +271,24 @@ class AntController:
             node.start()  # 블로킹 — stop()에서 node.stop()으로 탈출
 
         finally:
+            if self._watchdog_stop is not None:
+                self._watchdog_stop.set()
+            if self._watchdog_thread is not None:
+                self._watchdog_thread.join(timeout=2)
+            if self._connected:
+                self._connected = False
+                self._notify_disconnected()
             with self._node_lock:
                 self._node = None
             sock.close()
             self._cleanup()
+
+    def _watchdog_loop(self, stop_event: threading.Event):
+        """일정 시간 이상 데이터가 없으면 연결 해제로 판단"""
+        while not stop_event.wait(1.0):
+            if self._connected and (time.time() - self._last_data_time) > self.disconnect_timeout:
+                self._connected = False
+                self._notify_disconnected()
 
     def _cleanup(self):
         """USB 완전 해제 + 모듈 캐시 초기화"""
@@ -198,3 +303,11 @@ class AntController:
     def _notify_error(self, msg: str):
         if self.on_error:
             self.on_error(msg)
+
+    def _notify_connected(self, device_id: int):
+        if self.on_connected:
+            self.on_connected(device_id)
+
+    def _notify_disconnected(self):
+        if self.on_disconnected:
+            self.on_disconnected()

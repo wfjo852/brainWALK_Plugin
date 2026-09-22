@@ -53,6 +53,11 @@ class ConfigManager:
             "point_size": 2,
             "touch_point_size": 50
         },
+        "ant_device": {
+            "device_id": 0,
+            "device_type": 120,
+            "transmission_type": 0
+        },
         "links": {
             "download_url": "https://ydlidar.com/download/category/tool-sdk-ros/",
             "manual_url": "https://ydlidar.com/static/upload/file/20260615/1781511390297792.pdf"

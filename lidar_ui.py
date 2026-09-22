@@ -115,6 +115,8 @@ class LidarTouchScreenUI:
         self.ant.on_bpm = self._on_ant_bpm
         self.ant.on_status = self._on_ant_status
         self.ant.on_error = self._on_ant_error
+        self.ant.on_connected = self._on_ant_connected
+        self.ant.on_disconnected = self._on_ant_disconnected
     
     def _load_settings_from_config(self):
         cfg = self.config_manager
@@ -146,6 +148,12 @@ class LidarTouchScreenUI:
         )
         self.plot_xlim = cfg.get("visualization", "plot_xlim")
         self.plot_ylim = cfg.get("visualization", "plot_ylim")
+
+        saved_device_id = cfg.get("ant_device", "device_id")
+        if saved_device_id:
+            self.ant.device_id = saved_device_id
+            self.ant.device_type = cfg.get("ant_device", "device_type") or self.ant.device_type
+            self.ant.transmission_type = cfg.get("ant_device", "transmission_type") or 0
         self.point_size = cfg.get("visualization", "point_size")
         self.touch_point_size = cfg.get("visualization", "touch_point_size")
     
@@ -696,6 +704,10 @@ class LidarTouchScreenUI:
                               font=('Arial', 10, 'bold'), padx=10, pady=10)
         frame.pack(fill=tk.X, padx=10, pady=5)
 
+        # 장비 검색 버튼 (최상단)
+        tk.Button(frame, text="ANT+ 장비 검색", command=self._open_ant_scan_dialog,
+                  bg='#9333ea', fg='white', font=('Arial', 9, 'bold')).pack(fill=tk.X, pady=(0, 8))
+
         # 상태 + BPM
         top_frame = tk.Frame(frame, bg='#fce7f3')
         top_frame.pack(fill=tk.X, pady=(0, 5))
@@ -705,6 +717,13 @@ class LidarTouchScreenUI:
         self.ant_bpm_label = tk.Label(top_frame, text="-- BPM",
                                       fg='#be185d', bg='#fce7f3', font=('Arial', 14, 'bold'))
         self.ant_bpm_label.pack(side=tk.RIGHT)
+
+        # 연결된 장비 ID 표시
+        self.ant_connected_label = tk.Label(
+            frame,
+            text=self._format_connected_label(),
+            fg='gray', bg='#fce7f3', font=('Arial', 9))
+        self.ant_connected_label.pack(fill=tk.X, pady=(0, 5))
 
         # 시작/중지 버튼
         self.ant_btn = tk.Button(frame, text="ANT+ 시작",
@@ -736,6 +755,7 @@ class LidarTouchScreenUI:
         fields = [
             ("Device Type", "ant_device_type", self.ant.device_type),
             ("Device ID",   "ant_device_id",   self.ant.device_id),
+            ("Trans Type",  "ant_trans_type",   self.ant.transmission_type),
             ("HR Period",   "ant_hr_period",    self.ant.hr_period),
             ("RF Freq",     "ant_rf_freq",      self.ant.rf_freq),
         ]
@@ -767,13 +787,125 @@ class LidarTouchScreenUI:
             self.ant.udp_port = int(self.ant_udp_port.get())
             self.ant.device_type = int(self.ant_device_type.get())
             self.ant.device_id = int(self.ant_device_id.get())
+            self.ant.transmission_type = int(self.ant_trans_type.get())
             self.ant.hr_period = int(self.ant_hr_period.get())
             self.ant.rf_freq = int(self.ant_rf_freq.get())
         except ValueError:
             messagebox.showerror("오류", "ANT+ 설정값을 확인하세요.")
 
+    def _format_connected_label(self) -> str:
+        return f"연결된 ANT ID: {self.ant.device_id}" if self.ant.device_id else "연결된 ANT ID: --"
+
     def _on_ant_bpm(self, bpm: int):
         self.root.after(0, lambda: self.ant_bpm_label.config(text=f"{bpm} BPM"))
+
+    def _on_ant_connected(self, device_id: int):
+        self.root.after(0, lambda: (
+            self.ant_connected_label.config(text=f"연결된 ANT ID: {device_id}", fg='green'),
+            self._log_status(f"[ANT+] 장비 연결됨 (ID: {device_id})")
+        ))
+
+    def _on_ant_disconnected(self):
+        self.root.after(0, lambda: (
+            self.ant_connected_label.config(text="연결 해제됨", fg='red'),
+            self._log_status("[ANT+] 장비 연결 해제됨")
+        ))
+
+    def _open_ant_scan_dialog(self):
+        if self.ant.is_running:
+            self.ant.stop()
+            self.ant_btn.config(text="ANT+ 시작", bg='#ec4899')
+            self.ant_status_label.config(text="● 중지됨", fg='gray')
+            self.ant_bpm_label.config(text="-- BPM")
+            self._log_status("[ANT+] 장비 검색을 위해 중지됨")
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("ANT+ 장비 검색")
+        dialog.geometry("420x360")
+        dialog.transient(self.root)
+
+        status_label = tk.Label(dialog, text="검색 시작 버튼을 누르세요.", font=('Arial', 9))
+        status_label.pack(fill=tk.X, padx=10, pady=(10, 5))
+
+        listbox = tk.Listbox(dialog, font=('Consolas', 10))
+        listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        found_devices = []  # [(device_id, device_type, transmission_type)]
+
+        def on_found(device_id, device_type, transmission_type):
+            def _update():
+                try:
+                    if not dialog.winfo_exists():
+                        return
+                    found_devices.append((device_id, device_type, transmission_type))
+                    listbox.insert(
+                        tk.END,
+                        f"ID={device_id}  Type={device_type}  Trans={transmission_type}"
+                    )
+                except tk.TclError:
+                    pass
+            self.root.after(0, _update)
+
+        def on_scan_done():
+            def _update():
+                try:
+                    if not dialog.winfo_exists():
+                        return
+                    status_label.config(text="검색 완료. 장비를 선택하세요.")
+                    scan_btn.config(state=tk.NORMAL, text="다시 검색")
+                except tk.TclError:
+                    pass
+            self.root.after(0, _update)
+
+        def start_scan():
+            listbox.delete(0, tk.END)
+            found_devices.clear()
+            status_label.config(text="검색 중... (10초)")
+            scan_btn.config(state=tk.DISABLED)
+            self.ant.on_device_found = on_found
+            self.ant.on_scan_done = on_scan_done
+            self.ant.start_scan(duration=10)
+
+        def select_device():
+            sel = listbox.curselection()
+            if not sel:
+                messagebox.showwarning("안내", "장비를 선택하세요.", parent=dialog)
+                return
+            device_id, device_type, transmission_type = found_devices[sel[0]]
+
+            self.ant.device_id = device_id
+            self.ant.device_type = device_type
+            self.ant.transmission_type = transmission_type
+
+            self.ant_device_id.delete(0, tk.END)
+            self.ant_device_id.insert(0, str(device_id))
+            self.ant_device_type.delete(0, tk.END)
+            self.ant_device_type.insert(0, str(device_type))
+            self.ant_trans_type.delete(0, tk.END)
+            self.ant_trans_type.insert(0, str(transmission_type))
+
+            self.config_manager.set(device_id, "ant_device", "device_id")
+            self.config_manager.set(device_type, "ant_device", "device_type")
+            self.config_manager.set(transmission_type, "ant_device", "transmission_type")
+            self.config_manager.save_config()
+
+            self.ant_connected_label.config(text=self._format_connected_label(), fg='gray')
+            self._log_status(f"[ANT+] 장비 선택 및 저장: ID={device_id}, Type={device_type}, Trans={transmission_type}")
+            dialog.destroy()
+
+        def on_close():
+            if self.ant.is_scanning:
+                self.ant.stop_scan()
+            dialog.destroy()
+
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        scan_btn = tk.Button(btn_frame, text="검색 시작", command=start_scan)
+        scan_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
+        tk.Button(btn_frame, text="선택 및 저장", command=select_device,
+                  bg='#9333ea', fg='white').pack(side=tk.LEFT, expand=True, fill=tk.X)
+
+        dialog.protocol("WM_DELETE_WINDOW", on_close)
 
     def _on_ant_status(self, msg: str):
         self.root.after(0, lambda: (

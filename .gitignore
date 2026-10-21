@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+ANT_test.zip
+
+# Logs / local run output
+run_out.txt
+run_err.txt

@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>brainWALK-setting</AssemblyName>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PlatformTarget>x86</PlatformTarget>
+    <ApplicationIcon>BrainWalk.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <Target Name="CreateApplicationIcon" BeforeTargets="CoreCompile"
+          Inputs="$(MSBuildProjectDirectory)\..\icon\setting_icon.png"
+          Outputs="$(MSBuildProjectDirectory)\BrainWalk.ico">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\create-icon.ps1&quot;" />
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="9.0.0" />
+    <Content Include="../python/lidar_config.json" Link="lidar_config.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="ant-libs/pc/*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
+</Project>

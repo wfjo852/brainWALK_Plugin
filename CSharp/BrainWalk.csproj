@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <AssemblyName>brainWALK-setting</AssemblyName>
+    <AssemblyName>brainWALK-run</AssemblyName>
     <TargetFramework>net9.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
@@ -12,9 +12,9 @@
   </PropertyGroup>
 
   <Target Name="CreateApplicationIcon" BeforeTargets="CoreCompile"
-          Inputs="$(MSBuildProjectDirectory)\..\icon\setting_icon.png"
+          Inputs="$(MSBuildProjectDirectory)\..\icon\Run_icon.png"
           Outputs="$(MSBuildProjectDirectory)\BrainWalk.ico">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\create-icon.ps1&quot;" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\create-icon.ps1&quot; -Source &quot;$(MSBuildProjectDirectory)\..\icon\Run_icon.png&quot;" />
   </Target>
 
   <ItemGroup>

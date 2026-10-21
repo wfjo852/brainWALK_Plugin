@@ -8,7 +8,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Building brainWALK-setting...
+echo Building brainWALK-run...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0build.ps1"
 if errorlevel 1 (
     echo [ERROR] Build failed.
@@ -17,5 +17,5 @@ if errorlevel 1 (
 
 echo.
 echo Build completed.
-echo Output: %~dp0bin\Release\net9.0-windows\win-x86\publish-pc\brainWALK-setting.exe
+echo Output: %~dp0bin\Release\net9.0-windows\win-x86\publish-pc\brainWALK-run.exe
 exit /b 0

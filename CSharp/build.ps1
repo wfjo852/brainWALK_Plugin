@@ -42,7 +42,7 @@ $runBat = Join-Path $output 'RUN.bat'
 $runBatContent = @'
 @echo off
 cd /d "%~dp0"
-"brainWALK-setting.exe" -console
+"brainWALK-run.exe" -console
 '@
 [System.IO.File]::WriteAllText($runBat, $runBatContent, [System.Text.Encoding]::ASCII)
 Write-Host "Published: $output"

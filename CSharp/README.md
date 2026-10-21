@@ -21,17 +21,17 @@ build.bat
 
 BAT 파일은 다음 작업을 자동으로 수행합니다.
 
-1. `icon/setting_icon.png`를 Windows 실행 파일 아이콘으로 변환
+1. `icon/Run_icon.png`를 Windows 실행 파일 아이콘으로 변환
 2. `ANT_Libraries.zip`에서 PC용 ANT DLL 추출
 3. .NET 9 x86 단일 실행 파일 게시
 
 빌드 결과:
 
 ```text
-CSharp\bin\Release\net9.0-windows\win-x86\publish-pc\brainWALK-setting.exe
+CSharp\bin\Release\net9.0-windows\win-x86\publish-pc\brainWALK-run.exe
 ```
 
-게시 폴더의 `brainWALK-setting.exe`, `RUN.bat`, ANT DLL, `lidar_config.json`을 함께 사용해야 합니다.
+게시 폴더의 `brainWALK-run.exe`, `RUN.bat`, ANT DLL, `lidar_config.json`을 함께 사용해야 합니다.
 
 ## PowerShell로 빌드
 
@@ -51,16 +51,16 @@ dotnet build CSharp/BrainWalk.csproj -c Release
 
 ## 실행
 
-설정 화면을 열려면:
+런처(설정/게임 실행)를 열려면:
 
 ```powershell
-.\brainWALK-setting.exe
+.\brainWALK-run.exe
 ```
 
 저장된 설정으로 LiDAR 터치와 ANT를 바로 시작하려면:
 
 ```powershell
-.\brainWALK-setting.exe -console
+.\brainWALK-run.exe -console
 ```
 
 빌드 결과 폴더의 `RUN.bat`을 더블클릭해도 같은 콘솔 모드로 실행됩니다.

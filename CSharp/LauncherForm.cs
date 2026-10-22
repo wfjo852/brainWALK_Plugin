@@ -5,23 +5,32 @@ namespace BrainWalk;
 public sealed class LauncherForm : Form
 {
     private readonly AppConfig _config = new();
-    private readonly TextBox _gamePath = new() { ReadOnly = true, Width = 360 };
-    private readonly Button _browseButton = new() { Text = "찾아보기", AutoSize = true };
-    private readonly Button _settingsButton = new() { Text = "설정하기", Width = 170, Height = 44 };
-    private readonly Button _runButton = new() { Text = "게임 실행하기", Width = 170, Height = 44 };
-    private readonly Label _status = new() { Text = "준비", AutoSize = true, ForeColor = Color.DimGray };
+    private readonly TextBox _gamePath = new() { ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = Color.FromArgb(245, 248, 244) };
+    private readonly Button _browseButton = new LauncherButton { Text = "찾아보기" };
+    private readonly Button _settingsButton = new LauncherButton { Text = "장치 설정" };
+    private readonly Button _runButton = new LauncherButton { Text = "게임 시작하기   →", Primary = true };
+    private readonly Label _status = new() { ForeColor = LauncherTheme.Muted, BackColor = Color.FromArgb(242, 247, 239) };
+    private readonly ToolTip _pathTip = new();
 
     public LauncherForm()
     {
         Text = "brainWALK";
-        Width = 600; Height = 280;
+        AutoScaleDimensions = new SizeF(96, 96);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        ClientSize = new Size(980, 600);
+        Font = new Font("맑은 고딕", 10F);
+        BackColor = Color.FromArgb(243, 248, 238);
+        DoubleBuffered = true;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
+        using (var appIcon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!))
+            if (appIcon is not null) Icon = (Icon)appIcon.Clone();
 
         BuildUi();
 
         _gamePath.Text = _config.Get("game", "exe_path", "");
+        UpdatePathStatus();
         _browseButton.Click += (_, _) => BrowseGamePath();
         _settingsButton.Click += (_, _) => OpenSettings();
         _runButton.Click += async (_, _) => await RunGameAsync();
@@ -29,30 +38,70 @@ public sealed class LauncherForm : Form
 
     private void BuildUi()
     {
-        var root = new TableLayoutPanel
+        var root = new LauncherBackdrop { Dock = DockStyle.Fill };
+        var card = new LauncherCard { Location = new Point(448, 48), Size = new Size(484, 490) };
+        void AddLabel(string text, int x, int y, int width, int height, float size, Color color, bool bold = false)
         {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(16),
-            RowCount = 3,
-            ColumnCount = 1
+            card.Controls.Add(new Label
+            {
+                Text = text, Location = new Point(x, y), Size = new Size(width, height),
+                Font = new Font(Font.FontFamily, size, bold ? FontStyle.Bold : FontStyle.Regular),
+                ForeColor = color, BackColor = Color.White
+            });
+        }
+        AddLabel("LET’S WALK TOGETHER", 36, 32, 412, 24, 9, LauncherTheme.Green, true);
+        AddLabel("오늘도, 가볍게 한 걸음.", 32, 68, 424, 46, 22, LauncherTheme.Ink, true);
+        AddLabel("게임과 함께 즐거운 산책을 시작해 보세요.", 36, 121, 412, 28, 10, LauncherTheme.Muted);
+        AddLabel("게임 실행 파일", 36, 178, 412, 24, 10, LauncherTheme.Ink, true);
+
+        var pathBox = new LauncherCard
+        {
+            Location = new Point(36, 211), Size = new Size(300, 48),
+            FillColor = Color.FromArgb(245, 248, 244), BorderColor = Color.FromArgb(225, 232, 221), Radius = 12
         };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _gamePath.SetBounds(14, 14, 272, 24);
+        _gamePath.Font = new Font(Font.FontFamily, 9F);
+        _gamePath.ForeColor = LauncherTheme.Ink;
+        _gamePath.PlaceholderText = "실행할 게임의 .exe 파일을 선택하세요";
+        _gamePath.AccessibleName = "게임 실행 파일 경로";
+        pathBox.Controls.Add(_gamePath);
+        _browseButton.SetBounds(346, 211, 102, 48);
+        _browseButton.TabIndex = 1;
+        AddLabel("처음 한 번만 선택하면 다음에도 기억해요.", 36, 270, 412, 22, 9, LauncherTheme.Muted);
 
-        var pathRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
-        pathRow.Controls.Add(new Label { Text = "게임 경로", AutoSize = true, Margin = new Padding(0, 8, 8, 0) });
-        pathRow.Controls.Add(_gamePath);
-        pathRow.Controls.Add(_browseButton);
-
-        var buttonRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0, 16, 0, 0) };
-        buttonRow.Controls.Add(_settingsButton);
-        buttonRow.Controls.Add(_runButton);
-
-        root.Controls.Add(pathRow);
-        root.Controls.Add(buttonRow);
-        root.Controls.Add(_status);
+        _settingsButton.SetBounds(36, 315, 126, 58);
+        _settingsButton.TabIndex = 2;
+        _runButton.SetBounds(174, 315, 274, 58);
+        _runButton.TabIndex = 3;
+        var statusBox = new LauncherCard
+        {
+            Location = new Point(36, 397), Size = new Size(412, 60),
+            FillColor = Color.FromArgb(242, 247, 239), Radius = 14
+        };
+        _status.SetBounds(16, 10, 380, 42);
+        _status.TextAlign = ContentAlignment.MiddleLeft;
+        _status.Font = new Font(Font.FontFamily, 9F);
+        _status.AccessibleName = "실행 상태";
+        statusBox.Controls.Add(_status);
+        card.Controls.AddRange([pathBox, _browseButton, _settingsButton, _runButton, statusBox]);
+        root.Controls.Add(card);
         Controls.Add(root);
+        AcceptButton = _runButton;
+        ActiveControl = _browseButton;
+    }
+
+    private void UpdatePathStatus()
+    {
+        _pathTip.SetToolTip(_gamePath, _gamePath.Text);
+        _status.Text = File.Exists(_gamePath.Text)
+            ? "●  준비 완료 · 게임을 시작할 수 있어요."
+            : "●  게임 파일을 선택해 주세요. 장치는 설정에서 확인하세요.";
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _pathTip.Dispose();
+        base.Dispose(disposing);
     }
 
     private void OpenSettings()
@@ -85,6 +134,7 @@ public sealed class LauncherForm : Form
         _gamePath.Text = dialog.FileName;
         _config.Set("game", "exe_path", dialog.FileName);
         _config.Save();
+        UpdatePathStatus();
     }
 
     private async Task RunGameAsync()
@@ -104,6 +154,9 @@ public sealed class LauncherForm : Form
         }
 
         _runButton.Enabled = false;
+        _browseButton.Enabled = false;
+        _settingsButton.Enabled = false;
+        _runButton.Text = "연결하는 중…";
         _status.Text = "플러그인(LiDAR/ANT) 시작 중...";
         try
         {
@@ -136,6 +189,9 @@ public sealed class LauncherForm : Form
         finally
         {
             _runButton.Enabled = true;
+            _browseButton.Enabled = true;
+            _settingsButton.Enabled = true;
+            _runButton.Text = "게임 시작하기   →";
         }
     }
 }

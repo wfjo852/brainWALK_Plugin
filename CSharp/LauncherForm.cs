@@ -11,6 +11,7 @@ public sealed class LauncherForm : Form
     private readonly Button _runButton = new LauncherButton { Text = "게임 시작하기   →", Primary = true };
     private readonly Label _status = new() { ForeColor = LauncherTheme.Muted, BackColor = Color.FromArgb(242, 247, 239) };
     private readonly ToolTip _pathTip = new();
+    private Process? _pluginProcess;
 
     public LauncherForm()
     {
@@ -100,7 +101,11 @@ public sealed class LauncherForm : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) _pathTip.Dispose();
+        if (disposing)
+        {
+            _pathTip.Dispose();
+            _pluginProcess?.Dispose();
+        }
         base.Dispose(disposing);
     }
 
@@ -132,6 +137,9 @@ public sealed class LauncherForm : Form
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
         _gamePath.Text = dialog.FileName;
+        // 설정 화면(MainForm)이 그 사이에 같은 파일에 저장했을 수 있으니,
+        // 저장 직전에 최신 내용을 다시 읽어와 그 위에 덮어쓰지 않도록 한다.
+        _config.Reload();
         _config.Set("game", "exe_path", dialog.FileName);
         _config.Save();
         UpdatePathStatus();
@@ -157,19 +165,37 @@ public sealed class LauncherForm : Form
         _browseButton.Enabled = false;
         _settingsButton.Enabled = false;
         _runButton.Text = "연결하는 중…";
-        _status.Text = "플러그인(LiDAR/ANT) 시작 중...";
         try
         {
-            using var plugin = Process.Start(new ProcessStartInfo(selfPath, "-console") { UseShellExecute = true });
-            if (plugin is null) throw new InvalidOperationException("플러그인 프로세스를 시작하지 못했습니다.");
+            if (_pluginProcess is { HasExited: false })
+            {
+                _status.Text = "기존 연결을 종료하는 중...";
+                try
+                {
+                    _pluginProcess.Kill(entireProcessTree: true);
+                    await _pluginProcess.WaitForExitAsync();
+                }
+                catch { /* 이미 종료되었거나 접근할 수 없음 */ }
+                finally
+                {
+                    _pluginProcess.Dispose();
+                    _pluginProcess = null;
+                }
+            }
+
+            _status.Text = "플러그인(LiDAR/ANT) 시작 중...";
+            _pluginProcess = Process.Start(new ProcessStartInfo(selfPath, "-console") { UseShellExecute = true });
+            if (_pluginProcess is null) throw new InvalidOperationException("플러그인 프로세스를 시작하지 못했습니다.");
 
             // 콘솔 모드는 LiDAR/ANT 연결에 실패하면 바로 종료 코드 1로 끝난다.
             // 잠시 기다려 본 뒤에도 살아있으면 정상 시작으로 간주한다.
             await Task.Delay(3000);
-            if (plugin.HasExited)
+            if (_pluginProcess.HasExited)
             {
-                _status.Text = $"플러그인 시작 실패 (종료 코드 {plugin.ExitCode})";
+                _status.Text = $"플러그인 시작 실패 (종료 코드 {_pluginProcess.ExitCode})";
                 MessageBox.Show(this, "LiDAR/ANT 연결에 실패했습니다. 설정을 확인해주세요.", "brainWALK", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                _pluginProcess.Dispose();
+                _pluginProcess = null;
                 return;
             }
 

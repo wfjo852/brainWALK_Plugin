@@ -81,7 +81,7 @@ internal static class ConsoleRunner
         lidar.FlipY = config.Get("lidar_position", "flip_y", false);
         // Console mode is the unattended touch mode, so mouse control starts immediately.
         lidar.MouseEnabled = true;
-        lidar.DragEnabled = config.Get("mouse_control", "drag_enabled", true);
+        lidar.DragEnabled = config.Get("mouse_control", "drag_enabled", false);
 
         int monitorIndex = config.Get("mouse_control", "monitor_index", 0);
         var screens = Screen.AllScreens;

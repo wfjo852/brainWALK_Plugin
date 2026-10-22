@@ -32,22 +32,31 @@ public sealed class MainForm : Form
     private readonly CheckBox _flipX = new() { Text = "Flip X", AutoSize = true };
     private readonly CheckBox _flipY = new() { Text = "Flip Y", AutoSize = true };
     private readonly CheckBox _mouse = new() { Text = "마우스 제어 (Ctrl+Shift+M)", AutoSize = true };
-    private readonly CheckBox _drag = new() { Text = "드래그 사용", AutoSize = true, Checked = true };
+    private readonly CheckBox _drag = new() { Text = "드래그 사용", AutoSize = true, Checked = false };
     private readonly ComboBox _previewMode = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
     private readonly ComboBox _monitors = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
     private readonly Label _bpm = new() { Text = "-- BPM", AutoSize = true, Font = new Font("Segoe UI", 20, FontStyle.Bold) };
-    private readonly Label _deviceLabel = new() { Text = "ANT 장비: --", AutoSize = true };
-    private readonly Label _status = new() { Text = "준비", AutoSize = true };
-    private readonly Button _lidarButton = new() { Text = "LiDAR 시작", AutoSize = true };
-    private readonly Button _antButton = new() { Text = "ANT 시작", AutoSize = true };
-    private readonly ScanView _view = new() { Dock = DockStyle.Fill, BackColor = Color.FromArgb(12, 20, 32) };
+    private readonly Label _deviceLabel = new() { Text = "ANT 장비: --", AutoSize = false, Width = 420, Height = 30, AutoEllipsis = true };
+    private readonly Label _status = new() { Text = "준비", AutoEllipsis = true, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly Button _lidarButton = new LauncherButton { Text = "LiDAR 시작", Width = 180, Height = 42, Primary = true };
+    private readonly Button _antButton = new LauncherButton { Text = "ANT 시작", Width = 160, Height = 42, Primary = true };
+    private readonly ScanView _view = new() { Dock = DockStyle.Fill, BackColor = Color.FromArgb(24, 44, 38) };
     private int _previewModeValue = (int)PreviewMode.Full;
 
     public MainForm()
     {
-        Text = "brainWALK — LiDAR + ANT+";
-        Width = 1200; Height = 780;
-        MinimumSize = new Size(900, 560);
+        Text = "brainWALK — 장치 설정";
+        AutoScaleDimensions = new SizeF(96, 96);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        Font = new Font("맑은 고딕", 10F);
+        ForeColor = LauncherTheme.Ink;
+        BackColor = SettingsTheme.Canvas;
+        ClientSize = new Size(1240, 820);
+        MinimumSize = new Size(1080, 690);
+        StartPosition = FormStartPosition.CenterParent;
+        DoubleBuffered = true;
+        using (var appIcon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!))
+            if (appIcon is not null) Icon = (Icon)appIcon.Clone();
         BuildUi();
         LoadSettings();
         RefreshPorts();
@@ -85,6 +94,19 @@ public sealed class MainForm : Form
     private static NumericUpDown Number(int min, int max, int value) => new() { Minimum = min, Maximum = max, Value = value, Width = 90 };
     private void SafeUi(Action action) { if (!IsDisposed && IsHandleCreated) BeginInvoke(action); }
 
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        // Keep the footer inside the usable desktop, including on smaller displays
+        // and when Windows display scaling makes the initial window taller.
+        var workspace = Screen.FromControl(this).WorkingArea;
+        MinimumSize = new Size(Math.Min(MinimumSize.Width, workspace.Width), Math.Min(MinimumSize.Height, workspace.Height));
+        Size = new Size(Math.Min(Width, workspace.Width), Math.Min(Height, workspace.Height));
+        Location = new Point(
+            Math.Clamp(Left, workspace.Left, workspace.Right - Width),
+            Math.Clamp(Top, workspace.Top, workspace.Bottom - Height));
+    }
+
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
@@ -106,70 +128,138 @@ public sealed class MainForm : Form
 
     private void BuildUi()
     {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3,
+            BackColor = SettingsTheme.Canvas, Margin = Padding.Empty
+        };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
+        root.Controls.Add(new SettingsHeader { Dock = DockStyle.Fill, Margin = Padding.Empty }, 0, 0);
+
         var split = new SplitContainer
         {
-            Dock = DockStyle.Fill,
-            FixedPanel = FixedPanel.Panel2
+            Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2,
+            BackColor = SettingsTheme.Canvas, Margin = new Padding(24, 0, 24, 0),
+            SplitterWidth = 20, TabStop = false
         };
-        Controls.Add(split);
+        root.Controls.Add(split, 0, 1);
+        Controls.Add(root);
         Shown += (_, _) =>
         {
-            split.SplitterDistance = Math.Max(350, split.ClientSize.Width - 550);
-            split.Panel1MinSize = 350;
-            split.Panel2MinSize = 440;
+            int scale(int value) => (int)Math.Round(value * DeviceDpi / 96f);
+            split.Panel1MinSize = scale(360);
+            split.Panel2MinSize = scale(510);
+            split.SplitterDistance = Math.Max(split.Panel1MinSize, split.ClientSize.Width - scale(540) - split.SplitterWidth);
         };
-        split.Panel1.Controls.Add(_view);
-        var side = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(10) };
-        split.Panel2.Controls.Add(side);
-        side.Controls.Add(Heading("LiDAR 연결"));
-        side.Controls.Add(Row("포트", _ports, Button("새로고침", RefreshPorts)));
-        side.Controls.Add(Row("통신 속도", _baud, Unit("bps")));
-        side.Controls.Add(Row("스캔 속도", _scanFrequency, _scanFrequencyValue));
+
+        var preview = new LauncherCard { Dock = DockStyle.Fill, Padding = new Padding(16), FillColor = Color.FromArgb(24, 44, 38) };
+        var previewLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = preview.FillColor };
+        previewLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        previewLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+        previewLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        previewLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        var previewHeading = new Panel { Dock = DockStyle.Fill, BackColor = preview.FillColor };
+        previewHeading.Controls.Add(new Label { Text = "LIVE PREVIEW", Location = new Point(8, 2), AutoSize = true, ForeColor = Color.FromArgb(174, 204, 161), Font = new Font("Segoe UI", 9, FontStyle.Bold) });
+        previewHeading.Controls.Add(new Label { Text = "센서와 터치 영역 미리보기", Location = new Point(8, 27), AutoSize = true, ForeColor = Color.White, Font = new Font(Font.FontFamily, 13, FontStyle.Bold) });
+        previewLayout.Controls.Add(previewHeading, 0, 0);
+        previewLayout.Controls.Add(_view, 0, 1);
+        previewLayout.Controls.Add(new Label
+        {
+            Text = "●  터치     ●  드래그     ·     마우스 제어  Ctrl + Shift + M",
+            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = Color.FromArgb(197, 214, 201), Font = new Font(Font.FontFamily, 9)
+        }, 0, 2);
+        preview.Controls.Add(previewLayout);
+        split.Panel1.Controls.Add(preview);
+
+        var tabs = new SettingsTabs { Dock = DockStyle.Fill };
+        split.Panel2.Controls.Add(tabs);
+        var connection = SettingsTheme.Page(tabs, "장치 연결");
+        var touch = SettingsTheme.Page(tabs, "터치 영역");
+        var display = SettingsTheme.Page(tabs, "화면 · 제어");
+
+        _scanFrequency.Width = 210;
+        _scanFrequencyValue.Width = 64;
+        _scanFrequency.BackColor = Color.White;
+        _scanFrequency.TickStyle = TickStyle.None;
+        _scanFrequencyValue.ForeColor = LauncherTheme.Green;
+        _scanFrequencyValue.Font = new Font(Font.FontFamily, 10, FontStyle.Bold);
         _lidarButton.Click += (_, _) => ToggleLidar();
-        side.Controls.Add(_lidarButton);
-        side.Controls.Add(Heading("프리뷰"));
-        _previewMode.Items.AddRange(["터치 위치만 보기", "전체 프리뷰", "프리뷰 없음"]);
-        side.Controls.Add(Row("표시 방식", _previewMode));
-        side.Controls.Add(Heading("터치 감지"));
-        side.Controls.Add(Row("거리 임계값", _threshold, Unit("mm")));
-        side.Controls.Add(Row("최소 포인트", _minPoints, Unit("개")));
-        side.Controls.Add(Row("X / Y", _areaX, Unit("mm"), _areaY, Unit("mm")));
-        side.Controls.Add(Row("너비 / 높이", _areaWidth, Unit("mm"), _areaHeight, Unit("mm")));
-        side.Controls.Add(Row("터치 Offset X/Y", _touchOffsetX, Unit("mm"), _touchOffsetY, Unit("mm")));
-        side.Controls.Add(new Label { Text = "그룹 간격 5cm / 최대 지름 20cm", AutoSize = true, ForeColor = Color.DimGray });
-        side.Controls.Add(Row("각도 시작 / 끝", _startAngle, Unit("°"), _endAngle, Unit("°")));
-        side.Controls.Add(Row("회전", _rotation, Unit("°")));
-        side.Controls.Add(Row("반전", _flipX, _flipY));
-        side.Controls.Add(_mouse);
-        side.Controls.Add(_drag);
-        side.Controls.Add(new Label { Text = "터치: 주황 / 드래그: 자홍", AutoSize = true, ForeColor = Color.DimGray });
-        side.Controls.Add(Heading("모니터 선택"));
-        side.Controls.Add(Row("모니터", _monitors));
-        side.Controls.Add(Button("모니터 검색", RefreshMonitors));
-        side.Controls.Add(Button("설정 적용 및 저장", SaveSettings));
-        side.Controls.Add(Heading("ANT+ 심박"));
-        side.Controls.Add(_deviceLabel);
-        side.Controls.Add(_bpm);
+        SettingsTheme.Section(connection, "01   LiDAR 연결", "센서의 연결 포트와 스캔 속도를 설정하세요.",
+            Row("연결 포트", _ports, Button("새로고침", RefreshPorts)),
+            Row("통신 속도", _baud, Unit("bps")),
+            Row("스캔 속도", _scanFrequency, _scanFrequencyValue),
+            _lidarButton);
+
+        _bpm.ForeColor = LauncherTheme.Green;
+        _bpm.Margin = new Padding(0, 4, 0, 12);
+        _deviceLabel.ForeColor = LauncherTheme.Muted;
         _antButton.Click += (_, _) => ToggleAnt();
-        side.Controls.Add(Row("심박 수신", _antButton));
-        side.Controls.Add(Button("ANT 장비 검색", OpenAntScan));
-        side.Controls.Add(Heading("상태"));
-        side.Controls.Add(_status);
+        SettingsTheme.Section(connection, "02   ANT+ 심박", "심박 센서를 검색하고 수신 상태를 확인하세요.",
+            _deviceLabel, _bpm, SettingsTheme.Actions(_antButton, Button("ANT 장비 검색", OpenAntScan)));
+
+        SettingsTheme.Section(touch, "01   터치 감지", "감지 거리와 유효 포인트 수를 조정하세요.",
+            Row("거리 임계값", _threshold, Unit("mm")), Row("최소 포인트", _minPoints, Unit("개")),
+            SettingsTheme.Hint("포인트 그룹 간격 50 mm · 최대 지름 200 mm"));
+        SettingsTheme.Section(touch, "02   영역 및 위치", "좌표와 크기, 터치 위치 보정을 설정하세요.",
+            Row("X / Y", _areaX, Unit("/"), _areaY, Unit("mm")),
+            Row("너비 / 높이", _areaWidth, Unit("/"), _areaHeight, Unit("mm")),
+            Row("보정 X / Y", _touchOffsetX, Unit("/"), _touchOffsetY, Unit("mm")));
+        _flipX.Text = "X축 반전";
+        _flipY.Text = "Y축 반전";
+        SettingsTheme.Section(touch, "03   각도 및 방향", "센서 설치 방향에 맞춰 감지 범위를 조정하세요.",
+            Row("시작 / 끝", _startAngle, Unit("/"), _endAngle, Unit("°")),
+            Row("회전", _rotation, Unit("°")), Row("반전", _flipX, _flipY));
+
+        _previewMode.Items.AddRange(["터치 위치만 보기", "전체 프리뷰", "프리뷰 없음"]);
+        SettingsTheme.Section(display, "01   프리뷰", "왼쪽 미리보기에 표시할 정보를 선택하세요.", Row("표시 방식", _previewMode));
+        SettingsTheme.Section(display, "02   출력 모니터", "터치 입력을 전달할 화면을 선택하세요.",
+            Row("모니터", _monitors), Button("모니터 새로고침", RefreshMonitors));
+        _mouse.Margin = new Padding(0, 4, 0, 12);
+        _drag.Margin = new Padding(0, 0, 0, 12);
+        SettingsTheme.Section(display, "03   마우스 제어", "터치로 마우스를 움직이고 드래그할 수 있어요.",
+            _mouse, _drag, SettingsTheme.Hint("주황: 터치 · 자홍: 드래그\nCtrl + Shift + M으로 마우스 제어를 켜고 끌 수 있어요."));
+
+        var footer = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, BackColor = SettingsTheme.Canvas,
+            Padding = new Padding(24, 16, 24, 28), Margin = Padding.Empty
+        };
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 218));
+        footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        var statusCard = new LauncherCard { Dock = DockStyle.Fill, Padding = new Padding(16, 8, 16, 8), FillColor = Color.FromArgb(232, 240, 225), BorderColor = Color.FromArgb(217, 229, 207), Radius = 16, Margin = new Padding(0, 0, 16, 0) };
+        _status.BackColor = statusCard.FillColor;
+        _status.ForeColor = LauncherTheme.Green;
+        statusCard.Controls.Add(_status);
+        footer.Controls.Add(statusCard, 0, 0);
+        var save = new LauncherButton { Text = "설정 적용 및 저장   ✓", Primary = true, Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = SettingsTheme.Canvas };
+        save.Click += (_, _) => SaveSettings();
+        footer.Controls.Add(save, 1, 0);
+        root.Controls.Add(footer, 0, 2);
+        SettingsTheme.StyleInputs(this);
     }
 
-    private static Label Heading(string text) => new() { Text = text, AutoSize = true, Font = new Font("Segoe UI", 12, FontStyle.Bold), Margin = new Padding(3, 14, 3, 5) };
-    private static Label Unit(string text) => new() { Text = text, AutoSize = true, Height = 28, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 3, 7, 0) };
+    private static Label Unit(string text) => new() { Text = text, AutoSize = true, ForeColor = LauncherTheme.Muted, Margin = new Padding(2, 8, 6, 0) };
     private static Button Button(string text, Action action)
     {
-        var button = new Button { Text = text, AutoSize = true };
+        var button = new LauncherButton { Text = text, Width = text.Length > 8 ? 174 : 130, Height = 40, Margin = new Padding(0, 0, 8, 0) };
         button.Click += (_, _) => action();
         return button;
     }
     private static Control Row(string label, params Control[] controls)
     {
-        var panel = new FlowLayoutPanel { Width = 510, Height = 36, WrapContents = false };
-        panel.Controls.Add(new Label { Text = label, Width = 120, Height = 28, TextAlign = ContentAlignment.MiddleLeft });
-        foreach (var control in controls) panel.Controls.Add(control);
+        var panel = new FlowLayoutPanel { Width = 450, Height = 46, WrapContents = false, Margin = Padding.Empty, BackColor = Color.White };
+        panel.Controls.Add(new Label { Text = label, Width = 102, Height = 36, Margin = new Padding(0, 0, 6, 0), TextAlign = ContentAlignment.MiddleLeft, ForeColor = LauncherTheme.Ink });
+        foreach (var control in controls)
+        {
+            if (control is not System.Windows.Forms.Button && control is not Label) control.Margin = new Padding(0, 5, 6, 0);
+            if (control is NumericUpDown or ComboBox) control.AccessibleName = label;
+            panel.Controls.Add(control);
+        }
         return panel;
     }
 
@@ -230,6 +320,7 @@ public sealed class MainForm : Form
     {
         _baud.Value = Math.Clamp(_config.Get("connection", "baudrate", 230400), (int)_baud.Minimum, (int)_baud.Maximum);
         _scanFrequency.Value = Math.Clamp((int)Math.Round(_config.Get("connection", "scan_frequency", 7.0) * 10), _scanFrequency.Minimum, _scanFrequency.Maximum);
+        _scanFrequencyValue.Text = $"{ScanFrequency:F1} Hz";
         _threshold.Value = _config.Get("touch_detection", "threshold_mm", 1000);
         _minPoints.Value = _config.Get("touch_detection", "min_points", 1);
         _areaX.Value = _config.Get("touch_area", "x", -300);
@@ -244,7 +335,7 @@ public sealed class MainForm : Form
         _flipX.Checked = _config.Get("lidar_position", "flip_x", true);
         _flipY.Checked = _config.Get("lidar_position", "flip_y", false);
         _mouse.Checked = _config.Get("mouse_control", "enabled", false);
-        _drag.Checked = _config.Get("mouse_control", "drag_enabled", true);
+        _drag.Checked = _config.Get("mouse_control", "drag_enabled", false);
         string previewMode = _config.Get("visualization", "preview_mode", "full");
         _previewMode.SelectedIndex = previewMode switch { "touch" => 0, "none" => 2, _ => 1 };
         _previewModeValue = _previewMode.SelectedIndex;
@@ -409,10 +500,28 @@ public sealed class MainForm : Form
     private void OpenAntScan()
     {
         if (_ant.IsRunning) { MessageBox.Show("현재 ANT 수신을 먼저 중지하세요."); return; }
-        var dialog = new Form { Text = "ANT 장비 검색", Width = 420, Height = 340, StartPosition = FormStartPosition.CenterParent };
-        var list = new ListBox { Dock = DockStyle.Fill };
-        var select = new Button { Text = "선택 및 저장", Dock = DockStyle.Bottom, Height = 40 };
-        dialog.Controls.Add(list); dialog.Controls.Add(select);
+        var dialog = new Form
+        {
+            Text = "brainWALK — ANT 장비 검색", ClientSize = new Size(480, 410),
+            MinimumSize = new Size(420, 360), StartPosition = FormStartPosition.CenterParent,
+            AutoScaleMode = AutoScaleMode.Dpi, AutoScaleDimensions = new SizeF(96, 96),
+            Font = Font, BackColor = SettingsTheme.Canvas, ForeColor = LauncherTheme.Ink,
+            Padding = new Padding(24), Icon = Icon
+        };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 4, ColumnCount = 1 };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+        layout.Controls.Add(new Label { Text = "심박 센서를 찾고 있어요", Dock = DockStyle.Fill, Font = new Font(Font.FontFamily, 16, FontStyle.Bold) }, 0, 0);
+        layout.Controls.Add(new Label { Text = "센서를 착용한 뒤, 검색된 장비를 선택해 주세요.", Dock = DockStyle.Fill, ForeColor = LauncherTheme.Muted, Font = new Font(Font.FontFamily, 9) }, 0, 1);
+        var list = new ListBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle, BackColor = Color.White, ForeColor = LauncherTheme.Ink, IntegralHeight = false };
+        var select = new LauncherButton { Text = "선택한 장비 저장   ✓", Primary = true, Dock = DockStyle.Fill, Margin = new Padding(0, 16, 0, 0), BackColor = SettingsTheme.Canvas, Enabled = false };
+        list.SelectedIndexChanged += (_, _) => select.Enabled = list.SelectedItem is AntDevice;
+        layout.Controls.Add(list, 0, 2);
+        layout.Controls.Add(select, 0, 3);
+        dialog.Controls.Add(layout);
         void Found(AntDevice device) => SafeUi(() => { if (!dialog.IsDisposed) list.Items.Add(device); });
         _ant.DeviceFound += Found;
         dialog.FormClosed += (_, _) => { _ant.DeviceFound -= Found; _ant.Stop(); };
@@ -520,16 +629,16 @@ internal sealed class ScanView : Control
             return At(point.X, point.Y);
         }
 
-        using var gridPen = new Pen(Color.FromArgb(52, 72, 94));
+        using var gridPen = new Pen(Color.FromArgb(57, 81, 68));
         using var sectorBrush = new SolidBrush(Color.FromArgb(35, 239, 196, 59));
         using var thresholdPen = new Pen(Color.FromArgb(249, 115, 22), 2) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash };
         using var areaPen = new Pen(Color.FromArgb(74, 222, 128), 2);
         using var areaBrush = new SolidBrush(Color.FromArgb(35, 74, 222, 128));
         using var startPen = new Pen(Color.FromArgb(251, 191, 36), 2);
         using var endPen = new Pen(Color.FromArgb(248, 113, 113), 2);
-        using var textBrush = new SolidBrush(Color.FromArgb(225, 235, 245));
-        using var smallFont = new Font("Segoe UI", 9);
-        using var titleFont = new Font("Segoe UI", 11, FontStyle.Bold);
+        using var textBrush = new SolidBrush(Color.FromArgb(214, 231, 216));
+        using var smallFont = new Font("맑은 고딕", 9);
+        using var titleFont = new Font("맑은 고딕", 10, FontStyle.Bold);
 
         int gridStep = radius > 4000 ? 2000 : radius > 1800 ? 1000 : 500;
         for (int r = gridStep; r < radius; r += gridStep)

@@ -13,6 +13,14 @@ internal sealed class AppConfig
         _root = File.Exists(_path) ? JsonNode.Parse(File.ReadAllText(_path))?.AsObject() ?? new() : new();
     }
 
+    // Long-lived AppConfig instances (e.g. the launcher's) can go stale while another
+    // window (e.g. the settings form) saves its own changes to the same file in the
+    // meantime. Reload right before writing so a save never clobbers those changes.
+    public void Reload()
+    {
+        _root = File.Exists(_path) ? JsonNode.Parse(File.ReadAllText(_path))?.AsObject() ?? new() : new();
+    }
+
     public T Get<T>(string section, string key, T fallback)
     {
         try

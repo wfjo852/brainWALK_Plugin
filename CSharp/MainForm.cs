@@ -94,7 +94,7 @@ public sealed class MainForm : Form
         _scanFrequency.KeyUp += async (_, _) => await ApplyScanFrequencyAsync();
         _touchOffsetX.ValueChanged += (_, _) => ApplyTouchOffset();
         _touchOffsetY.ValueChanged += (_, _) => ApplyTouchOffset();
-        FormClosing += (_, _) => { _lidar.Stop(); _ant.Stop(); };
+        FormClosing += (_, _) => { SaveServerUrl(); _lidar.Stop(); _ant.Stop(); };
     }
 
     private static NumericUpDown Number(int min, int max, int value) => new() { Minimum = min, Maximum = max, Value = value, Width = 90 };

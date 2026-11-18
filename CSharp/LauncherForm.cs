@@ -6,6 +6,7 @@ public sealed class LauncherForm : Form
 {
     private readonly AppConfig _config = new();
     private readonly Button _settingsButton = new LauncherButton { Text = "장치 설정" };
+    private readonly Button _historyButton = new LauncherButton { Text = "결과 보기", AccessibleName = "만든 게스트 결과 보기" };
     private readonly Button _runButton = new LauncherButton { Text = "게임 시작하기   →", Primary = true };
     private readonly Label _status = new() { ForeColor = LauncherTheme.Muted, BackColor = Color.FromArgb(242, 247, 239) };
 
@@ -43,6 +44,7 @@ public sealed class LauncherForm : Form
 
         UpdatePathStatus();
         _settingsButton.Click += (_, _) => OpenSettings();
+        _historyButton.Click += (_, _) => OpenHistory();
         _runButton.Click += async (_, _) => await RunGameAsync();
         _createGuestButton.Click += async (_, _) => await CreateGuestAsync();
         _resetGuestButton.Click += (_, _) => ShowGuestInput(clear: true);
@@ -61,7 +63,11 @@ public sealed class LauncherForm : Form
                 ForeColor = color, BackColor = Color.White
             });
         }
-        AddLabel("LET’S WALK TOGETHER", 36, 32, 412, 24, 9, LauncherTheme.Green, true);
+        AddLabel("LET’S WALK TOGETHER", 36, 32, 300, 24, 9, LauncherTheme.Green, true);
+        _historyButton.SetBounds(348, 24, 100, 36);
+        _historyButton.Font = new Font(Font.FontFamily, 9F, FontStyle.Bold);
+        _historyButton.TabIndex = 7;
+        card.Controls.Add(_historyButton);
         AddLabel("오늘도, 가볍게 한 걸음.", 32, 68, 424, 46, 22, LauncherTheme.Ink, true);
         AddLabel("게임과 함께 즐거운 산책을 시작해 보세요.", 36, 121, 412, 28, 10, LauncherTheme.Muted);
         BuildGuestUi(card, new Rectangle(36, 160, 412, 206));
@@ -212,6 +218,14 @@ public sealed class LauncherForm : Form
         {
             string serverUrl = _config.Get("server", "url", GuestApi.DefaultServerUrl);
             _guestIdx = await GuestApi.CreateGuestAsync(serverUrl, name, birthday, restingHr);
+            try
+            {
+                GuestHistory.Add(new GuestRecord(_guestIdx, name, birthday.ToString("yyyy-MM-dd"), restingHr, DateTime.Now));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"게스트 목록을 저장하지 못했습니다: {ex.Message}", "brainWALK", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
             _guestIdxLabel.Text = _guestIdx;
             _guestInfoLabel.Text = $"{name} · {birthday:yyyy-MM-dd} · 안정시 {restingHr} BPM";
             _guestInput.Visible = false;
@@ -251,6 +265,14 @@ public sealed class LauncherForm : Form
     {
         if (disposing) _pluginProcess?.Dispose();
         base.Dispose(disposing);
+    }
+
+    private void OpenHistory()
+    {
+        // 결과 페이지 주소는 설정에 저장된 서버 URL을 기준으로 만든다.
+        _config.Reload();
+        using var form = new GuestHistoryForm(_config.Get("server", "url", GuestApi.DefaultServerUrl), Icon);
+        form.ShowDialog(this);
     }
 
     private void OpenSettings(bool focusGamePath = false)

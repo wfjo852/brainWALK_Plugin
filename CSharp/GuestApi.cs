@@ -49,6 +49,10 @@ internal static partial class GuestApi
         throw new InvalidOperationException($"{reason} ({(int)response.StatusCode} {response.ReasonPhrase})");
     }
 
+    // 게스트 결과 페이지: {서버 URL}/villages/guests/{guestid}
+    public static Uri ResultPageUrl(string serverUrl, string guestId) =>
+        new(new Uri(NormalizeBase(serverUrl)), $"villages/guests/{Uri.EscapeDataString(guestId)}");
+
     private static bool IsRedirect(HttpStatusCode code) => (int)code is >= 300 and < 400;
 
     private static string NormalizeBase(string url)

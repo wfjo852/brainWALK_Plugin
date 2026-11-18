@@ -5,12 +5,9 @@ namespace BrainWalk;
 public sealed class LauncherForm : Form
 {
     private readonly AppConfig _config = new();
-    private readonly TextBox _gamePath = new() { ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = Color.FromArgb(245, 248, 244) };
-    private readonly Button _browseButton = new LauncherButton { Text = "찾아보기" };
     private readonly Button _settingsButton = new LauncherButton { Text = "장치 설정" };
     private readonly Button _runButton = new LauncherButton { Text = "게임 시작하기   →", Primary = true };
     private readonly Label _status = new() { ForeColor = LauncherTheme.Muted, BackColor = Color.FromArgb(242, 247, 239) };
-    private readonly ToolTip _pathTip = new();
     private Process? _pluginProcess;
 
     public LauncherForm()
@@ -30,9 +27,7 @@ public sealed class LauncherForm : Form
 
         BuildUi();
 
-        _gamePath.Text = _config.Get("game", "exe_path", "");
         UpdatePathStatus();
-        _browseButton.Click += (_, _) => BrowseGamePath();
         _settingsButton.Click += (_, _) => OpenSettings();
         _runButton.Click += async (_, _) => await RunGameAsync();
     }
@@ -40,7 +35,7 @@ public sealed class LauncherForm : Form
     private void BuildUi()
     {
         var root = new LauncherBackdrop { Dock = DockStyle.Fill };
-        var card = new LauncherCard { Location = new Point(448, 48), Size = new Size(484, 490) };
+        var card = new LauncherCard { Location = new Point(448, 120), Size = new Size(484, 360) };
         void AddLabel(string text, int x, int y, int width, int height, float size, Color color, bool bold = false)
         {
             card.Controls.Add(new Label
@@ -53,30 +48,13 @@ public sealed class LauncherForm : Form
         AddLabel("LET’S WALK TOGETHER", 36, 32, 412, 24, 9, LauncherTheme.Green, true);
         AddLabel("오늘도, 가볍게 한 걸음.", 32, 68, 424, 46, 22, LauncherTheme.Ink, true);
         AddLabel("게임과 함께 즐거운 산책을 시작해 보세요.", 36, 121, 412, 28, 10, LauncherTheme.Muted);
-        AddLabel("게임 실행 파일", 36, 178, 412, 24, 10, LauncherTheme.Ink, true);
-
-        var pathBox = new LauncherCard
-        {
-            Location = new Point(36, 211), Size = new Size(300, 48),
-            FillColor = Color.FromArgb(245, 248, 244), BorderColor = Color.FromArgb(225, 232, 221), Radius = 12
-        };
-        _gamePath.SetBounds(14, 14, 272, 24);
-        _gamePath.Font = new Font(Font.FontFamily, 9F);
-        _gamePath.ForeColor = LauncherTheme.Ink;
-        _gamePath.PlaceholderText = "실행할 게임의 .exe 파일을 선택하세요";
-        _gamePath.AccessibleName = "게임 실행 파일 경로";
-        pathBox.Controls.Add(_gamePath);
-        _browseButton.SetBounds(346, 211, 102, 48);
-        _browseButton.TabIndex = 1;
-        AddLabel("처음 한 번만 선택하면 다음에도 기억해요.", 36, 270, 412, 22, 9, LauncherTheme.Muted);
-
-        _settingsButton.SetBounds(36, 315, 126, 58);
-        _settingsButton.TabIndex = 2;
-        _runButton.SetBounds(174, 315, 274, 58);
-        _runButton.TabIndex = 3;
+        _settingsButton.SetBounds(36, 178, 126, 58);
+        _settingsButton.TabIndex = 1;
+        _runButton.SetBounds(174, 178, 274, 58);
+        _runButton.TabIndex = 2;
         var statusBox = new LauncherCard
         {
-            Location = new Point(36, 397), Size = new Size(412, 60),
+            Location = new Point(36, 260), Size = new Size(412, 60),
             FillColor = Color.FromArgb(242, 247, 239), Radius = 14
         };
         _status.SetBounds(16, 10, 380, 42);
@@ -84,65 +62,44 @@ public sealed class LauncherForm : Form
         _status.Font = new Font(Font.FontFamily, 9F);
         _status.AccessibleName = "실행 상태";
         statusBox.Controls.Add(_status);
-        card.Controls.AddRange([pathBox, _browseButton, _settingsButton, _runButton, statusBox]);
+        card.Controls.AddRange([_settingsButton, _runButton, statusBox]);
         root.Controls.Add(card);
         Controls.Add(root);
         AcceptButton = _runButton;
-        ActiveControl = _browseButton;
+        ActiveControl = _runButton;
     }
+
+    // 게임 실행 파일은 장치 설정(MainForm)의 '설정' 탭에서 지정하고 저장한다.
+    private string GamePath => _config.Get("game", "exe_path", "");
 
     private void UpdatePathStatus()
     {
-        _pathTip.SetToolTip(_gamePath, _gamePath.Text);
-        _status.Text = File.Exists(_gamePath.Text)
-            ? "●  준비 완료 · 게임을 시작할 수 있어요."
-            : "●  게임 파일을 선택해 주세요. 장치는 설정에서 확인하세요.";
+        _status.Text = File.Exists(GamePath)
+            ? $"●  준비 완료 · {Path.GetFileName(GamePath)}"
+            : "●  장치 설정 > 설정 탭에서 게임 실행 파일을 선택해 주세요.";
     }
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
-        {
-            _pathTip.Dispose();
-            _pluginProcess?.Dispose();
-        }
+        if (disposing) _pluginProcess?.Dispose();
         base.Dispose(disposing);
     }
 
-    private void OpenSettings()
+    private void OpenSettings(bool focusGamePath = false)
     {
         Hide();
         try
         {
-            using var mainForm = new MainForm();
+            using var mainForm = new MainForm(focusGamePath);
             mainForm.ShowDialog(this);
         }
         finally
         {
+            // 설정 화면에서 바뀐 내용(게임 경로 등)을 다시 읽어온다.
+            _config.Reload();
+            UpdatePathStatus();
             Show();
         }
-    }
-
-    private void BrowseGamePath()
-    {
-        using var dialog = new OpenFileDialog
-        {
-            Title = "게임 실행 파일 선택",
-            Filter = "실행 파일 (*.exe)|*.exe|모든 파일 (*.*)|*.*",
-            // Vista 스타일 공용 대화상자(IFileOpenDialog)는 OneDrive나 끊긴 네트워크 드라이브가
-            // 있을 때 쉘 네임스페이스를 열다가 멈추는 경우가 있어, 가벼운 구버전 대화상자를 사용한다.
-            AutoUpgradeEnabled = false,
-            FileName = File.Exists(_gamePath.Text) ? _gamePath.Text : ""
-        };
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
-
-        _gamePath.Text = dialog.FileName;
-        // 설정 화면(MainForm)이 그 사이에 같은 파일에 저장했을 수 있으니,
-        // 저장 직전에 최신 내용을 다시 읽어와 그 위에 덮어쓰지 않도록 한다.
-        _config.Reload();
-        _config.Set("game", "exe_path", dialog.FileName);
-        _config.Save();
-        UpdatePathStatus();
     }
 
     // LiDAR 시리얼 포트와 ANT USB 동글은 한 프로세스만 점유할 수 있으므로,
@@ -179,12 +136,13 @@ public sealed class LauncherForm : Form
 
     private async Task RunGameAsync()
     {
-        if (string.IsNullOrWhiteSpace(_gamePath.Text) || !File.Exists(_gamePath.Text))
+        if (!File.Exists(GamePath))
         {
-            MessageBox.Show(this, "먼저 게임 경로를 지정해주세요.", "brainWALK", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            BrowseGamePath();
-            if (string.IsNullOrWhiteSpace(_gamePath.Text) || !File.Exists(_gamePath.Text)) return;
+            MessageBox.Show(this, "먼저 장치 설정의 '설정' 탭에서 게임 실행 파일을 지정해주세요.", "brainWALK", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            OpenSettings(focusGamePath: true);
+            if (!File.Exists(GamePath)) return;
         }
+        string gamePath = GamePath;
 
         string? selfPath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(selfPath) || !File.Exists(selfPath))
@@ -194,7 +152,6 @@ public sealed class LauncherForm : Form
         }
 
         _runButton.Enabled = false;
-        _browseButton.Enabled = false;
         _settingsButton.Enabled = false;
         _runButton.Text = "연결하는 중…";
         try
@@ -227,10 +184,10 @@ public sealed class LauncherForm : Form
             }
 
             _status.Text = "게임 실행 중...";
-            Process.Start(new ProcessStartInfo(_gamePath.Text)
+            Process.Start(new ProcessStartInfo(gamePath)
             {
                 UseShellExecute = true,
-                WorkingDirectory = Path.GetDirectoryName(_gamePath.Text) ?? ""
+                WorkingDirectory = Path.GetDirectoryName(gamePath) ?? ""
             });
             _status.Text = "게임이 실행되었습니다.";
         }
@@ -242,7 +199,6 @@ public sealed class LauncherForm : Form
         finally
         {
             _runButton.Enabled = true;
-            _browseButton.Enabled = true;
             _settingsButton.Enabled = true;
             _runButton.Text = "게임 시작하기   →";
         }

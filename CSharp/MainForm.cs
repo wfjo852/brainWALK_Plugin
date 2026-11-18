@@ -40,10 +40,14 @@ public sealed class MainForm : Form
     private readonly Label _status = new() { Text = "준비", AutoEllipsis = true, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
     private readonly Button _lidarButton = new LauncherButton { Text = "LiDAR 시작", Width = 180, Height = 42, Primary = true };
     private readonly Button _antButton = new LauncherButton { Text = "ANT 시작", Width = 160, Height = 42, Primary = true };
+    private readonly TextBox _gamePath = new() { ReadOnly = true, Multiline = true, WordWrap = true, ScrollBars = ScrollBars.None, Width = 450, Height = 64, BorderStyle = BorderStyle.FixedSingle, PlaceholderText = "실행할 게임의 .exe 파일을 선택하세요", AccessibleName = "게임 실행 파일 경로" };
+    private readonly ToolTip _gamePathTip = new();
+    private readonly SettingsTabs _tabs = new() { Dock = DockStyle.Fill };
+    private TabPage? _gameTab;
     private readonly ScanView _view = new() { Dock = DockStyle.Fill, BackColor = Color.FromArgb(24, 44, 38) };
     private int _previewModeValue = (int)PreviewMode.Full;
 
-    public MainForm()
+    public MainForm(bool focusGamePath = false)
     {
         Text = "brainWALK — 장치 설정";
         AutoScaleDimensions = new SizeF(96, 96);
@@ -61,6 +65,7 @@ public sealed class MainForm : Form
         LoadSettings();
         RefreshPorts();
         RefreshMonitors();
+        if (focusGamePath && _gameTab is not null) _tabs.SelectedTab = _gameTab;
         _lidar.Frame += (points, contacts) =>
         {
             var mode = (PreviewMode)Volatile.Read(ref _previewModeValue);
@@ -175,11 +180,13 @@ public sealed class MainForm : Form
         preview.Controls.Add(previewLayout);
         split.Panel1.Controls.Add(preview);
 
-        var tabs = new SettingsTabs { Dock = DockStyle.Fill };
+        var tabs = _tabs;
         split.Panel2.Controls.Add(tabs);
         var connection = SettingsTheme.Page(tabs, "장치 연결");
         var touch = SettingsTheme.Page(tabs, "터치 영역");
         var display = SettingsTheme.Page(tabs, "화면 · 제어");
+        var game = SettingsTheme.Page(tabs, "설정");
+        _gameTab = (TabPage)game.Parent!;
 
         _scanFrequency.Width = 210;
         _scanFrequencyValue.Width = 64;
@@ -222,6 +229,12 @@ public sealed class MainForm : Form
         _drag.Margin = new Padding(0, 0, 0, 12);
         SettingsTheme.Section(display, "03   마우스 제어", "터치로 마우스를 움직이고 드래그할 수 있어요.",
             _mouse, _drag, SettingsTheme.Hint("주황: 터치 · 자홍: 드래그\nCtrl + Shift + M으로 마우스 제어를 켜고 끌 수 있어요."));
+
+        _gamePath.Margin = new Padding(0, 0, 0, 10);
+        _gamePath.ForeColor = LauncherTheme.Ink;
+        SettingsTheme.Section(game, "01   게임 실행 파일", "‘게임 시작하기’를 누르면 실행할 게임을 선택하세요.",
+            _gamePath, SettingsTheme.Actions(Button("찾아보기", BrowseGamePath)),
+            SettingsTheme.Hint("처음 한 번만 선택하면 다음에도 기억해요."));
 
         var footer = new TableLayoutPanel
         {
@@ -342,7 +355,35 @@ public sealed class MainForm : Form
         _view.SetPreviewMode((PreviewMode)_previewModeValue);
         _ant.SelectedDevice = new(_config.Get("ant_device", "device_id", 0), _config.Get("ant_device", "device_type", 120), _config.Get("ant_device", "transmission_type", 0));
         _deviceLabel.Text = $"ANT 장비: {_ant.SelectedDevice}";
+        _gamePath.Text = _config.Get("game", "exe_path", "");
+        _gamePathTip.SetToolTip(_gamePath, _gamePath.Text);
         ApplySettings();
+    }
+
+    private void BrowseGamePath()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Title = "게임 실행 파일 선택",
+            Filter = "실행 파일 (*.exe)|*.exe|모든 파일 (*.*)|*.*",
+            // Vista 스타일 공용 대화상자(IFileOpenDialog)는 OneDrive나 끊긴 네트워크 드라이브가
+            // 있을 때 쉘 네임스페이스를 열다가 멈추는 경우가 있어, 가벼운 구버전 대화상자를 사용한다.
+            AutoUpgradeEnabled = false,
+            FileName = File.Exists(_gamePath.Text) ? _gamePath.Text : ""
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        _gamePath.Text = dialog.FileName;
+        _gamePathTip.SetToolTip(_gamePath, dialog.FileName);
+        _config.Set("game", "exe_path", dialog.FileName);
+        _config.Save();
+        _status.Text = $"게임 실행 파일: {Path.GetFileName(dialog.FileName)}";
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _gamePathTip.Dispose();
+        base.Dispose(disposing);
     }
 
     private void ApplySettings()

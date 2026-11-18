@@ -72,7 +72,7 @@ internal static class SettingsTheme
             int width = Math.Max(1, body.ClientSize.Width - body.Padding.Horizontal);
             heading.Width = caption.Width = width;
             foreach (Control control in body.Controls)
-                if (control is FlowLayoutPanel || control is Label { AutoSize: false }) control.Width = width;
+                if (control is FlowLayoutPanel || control is TextBox || control is Label { AutoSize: false }) control.Width = width;
         };
         page.Controls.Add(card);
     }

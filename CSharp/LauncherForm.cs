@@ -145,6 +145,38 @@ public sealed class LauncherForm : Form
         UpdatePathStatus();
     }
 
+    // LiDAR 시리얼 포트와 ANT USB 동글은 한 프로세스만 점유할 수 있으므로,
+    // 이 런처가 띄운 것뿐 아니라 이전 실행에서 남은 콘솔 플러그인(brainWALK-run -console),
+    // 다른 런처 인스턴스까지 모두 종료한다.
+    private static readonly string[] PluginProcessNames = ["brainWALK-run"];
+
+    private static async Task<int> KillExistingPluginsAsync()
+    {
+        int selfId = Environment.ProcessId;
+        var targets = PluginProcessNames
+            .SelectMany(Process.GetProcessesByName)
+            .Where(p => p.Id != selfId)
+            .ToList();
+
+        int killed = 0;
+        foreach (var process in targets)
+        {
+            using (process)
+            {
+                try
+                {
+                    if (process.HasExited) continue;
+                    process.Kill(entireProcessTree: true);
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    await process.WaitForExitAsync(timeout.Token);
+                    killed++;
+                }
+                catch { /* 이미 종료되었거나, 접근 권한이 없거나, 종료 대기 시간 초과 */ }
+            }
+        }
+        return killed;
+    }
+
     private async Task RunGameAsync()
     {
         if (string.IsNullOrWhiteSpace(_gamePath.Text) || !File.Exists(_gamePath.Text))
@@ -167,20 +199,15 @@ public sealed class LauncherForm : Form
         _runButton.Text = "연결하는 중…";
         try
         {
-            if (_pluginProcess is { HasExited: false })
+            _status.Text = "기존 LiDAR/ANT 연결을 확인하는 중...";
+            _pluginProcess?.Dispose();
+            _pluginProcess = null;
+            int killed = await KillExistingPluginsAsync();
+            if (killed > 0)
             {
-                _status.Text = "기존 연결을 종료하는 중...";
-                try
-                {
-                    _pluginProcess.Kill(entireProcessTree: true);
-                    await _pluginProcess.WaitForExitAsync();
-                }
-                catch { /* 이미 종료되었거나 접근할 수 없음 */ }
-                finally
-                {
-                    _pluginProcess.Dispose();
-                    _pluginProcess = null;
-                }
+                _status.Text = $"기존 LiDAR/ANT 연결 {killed}개를 종료했습니다. 재시작합니다...";
+                // 시리얼 포트(LiDAR)와 ANT USB 동글이 OS에서 완전히 해제될 시간을 준다.
+                await Task.Delay(1000);
             }
 
             _status.Text = "플러그인(LiDAR/ANT) 시작 중...";

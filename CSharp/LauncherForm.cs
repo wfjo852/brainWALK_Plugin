@@ -275,13 +275,54 @@ public sealed class LauncherForm : Form
     // 다른 런처 인스턴스까지 모두 종료한다.
     private static readonly string[] PluginProcessNames = ["brainWALK-run"];
 
-    private static async Task<int> KillExistingPluginsAsync()
+    private static Task<int> KillExistingPluginsAsync() =>
+        KillProcessesAsync(PluginProcessNames.SelectMany(Process.GetProcessesByName));
+
+    // 이미 실행 중인 게임을 종료한다. 같은 이름의 다른 프로그램을 잘못 끄지 않도록,
+    // 실행 경로를 읽을 수 있으면 설정된 게임 경로와 같은 것만 대상으로 한다.
+    private static Task<int> KillRunningGameAsync(string gamePath)
+    {
+        string fullPath = Path.GetFullPath(gamePath);
+        var targets = new List<Process>();
+        foreach (var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(gamePath)))
+        {
+            string? path = TryGetProcessPath(process);
+            if (path is null || string.Equals(Path.GetFullPath(path), fullPath, StringComparison.OrdinalIgnoreCase))
+                targets.Add(process);
+            else
+                process.Dispose();
+        }
+        return KillProcessesAsync(targets);
+    }
+
+    // 런처는 x86이라 64비트 게임의 MainModule은 읽을 수 없으므로 QueryFullProcessImageName을 쓴다.
+    private static string? TryGetProcessPath(Process process)
+    {
+        const uint ProcessQueryLimitedInformation = 0x1000;
+        IntPtr handle = OpenProcess(ProcessQueryLimitedInformation, false, process.Id);
+        if (handle == IntPtr.Zero) return null;
+        try
+        {
+            var buffer = new System.Text.StringBuilder(1024);
+            int size = buffer.Capacity;
+            return QueryFullProcessImageName(handle, 0, buffer, ref size) ? buffer.ToString(0, size) : null;
+        }
+        finally { CloseHandle(handle); }
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint access, bool inheritHandle, int processId);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool QueryFullProcessImageName(IntPtr process, int flags, System.Text.StringBuilder exeName, ref int size);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    private static async Task<int> KillProcessesAsync(IEnumerable<Process> processes)
     {
         int selfId = Environment.ProcessId;
-        var targets = PluginProcessNames
-            .SelectMany(Process.GetProcessesByName)
-            .Where(p => p.Id != selfId)
-            .ToList();
+        var targets = processes.ToList();
 
         int killed = 0;
         foreach (var process in targets)
@@ -290,7 +331,7 @@ public sealed class LauncherForm : Form
             {
                 try
                 {
-                    if (process.HasExited) continue;
+                    if (process.Id == selfId || process.HasExited) continue;
                     process.Kill(entireProcessTree: true);
                     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                     await process.WaitForExitAsync(timeout.Token);
@@ -340,6 +381,13 @@ public sealed class LauncherForm : Form
         _runButton.Text = "연결하는 중…";
         try
         {
+            _status.Text = "실행 중인 게임을 확인하는 중...";
+            if (await KillRunningGameAsync(gamePath) > 0)
+            {
+                _status.Text = "실행 중이던 게임을 종료했습니다. 새로 시작합니다...";
+                await Task.Delay(500);
+            }
+
             _status.Text = "기존 LiDAR/ANT 연결을 확인하는 중...";
             _pluginProcess?.Dispose();
             _pluginProcess = null;

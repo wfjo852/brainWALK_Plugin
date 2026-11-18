@@ -42,6 +42,7 @@ public sealed class MainForm : Form
     private readonly Button _antButton = new LauncherButton { Text = "ANT 시작", Width = 160, Height = 42, Primary = true };
     private readonly TextBox _gamePath = new() { ReadOnly = true, Multiline = true, WordWrap = true, ScrollBars = ScrollBars.None, Width = 450, Height = 64, BorderStyle = BorderStyle.FixedSingle, PlaceholderText = "실행할 게임의 .exe 파일을 선택하세요", AccessibleName = "게임 실행 파일 경로" };
     private readonly ToolTip _gamePathTip = new();
+    private readonly TextBox _serverUrl = new() { Width = 450, BorderStyle = BorderStyle.FixedSingle, PlaceholderText = GuestApi.DefaultServerUrl, AccessibleName = "서버 URL" };
     private readonly SettingsTabs _tabs = new() { Dock = DockStyle.Fill };
     private TabPage? _gameTab;
     private readonly ScanView _view = new() { Dock = DockStyle.Fill, BackColor = Color.FromArgb(24, 44, 38) };
@@ -236,6 +237,12 @@ public sealed class MainForm : Form
             _gamePath, SettingsTheme.Actions(Button("찾아보기", BrowseGamePath)),
             SettingsTheme.Hint("처음 한 번만 선택하면 다음에도 기억해요."));
 
+        _serverUrl.Margin = new Padding(0, 0, 0, 10);
+        _serverUrl.ForeColor = LauncherTheme.Ink;
+        _serverUrl.Leave += (_, _) => SaveServerUrl();
+        SettingsTheme.Section(game, "02   서버 URL", "게스트 아이디를 만들 때 통신할 서버 주소예요.",
+            _serverUrl, SettingsTheme.Actions(Button("URL 저장", SaveServerUrl)));
+
         var footer = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, BackColor = SettingsTheme.Canvas,
@@ -357,7 +364,24 @@ public sealed class MainForm : Form
         _deviceLabel.Text = $"ANT 장비: {_ant.SelectedDevice}";
         _gamePath.Text = _config.Get("game", "exe_path", "");
         _gamePathTip.SetToolTip(_gamePath, _gamePath.Text);
+        _serverUrl.Text = _config.Get("server", "url", GuestApi.DefaultServerUrl);
         ApplySettings();
+    }
+
+    private void SaveServerUrl()
+    {
+        string url = _serverUrl.Text.Trim();
+        if (url.Length == 0) url = GuestApi.DefaultServerUrl;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            _status.Text = "서버 URL 형식이 올바르지 않습니다 (http:// 또는 https://)";
+            return;
+        }
+        _serverUrl.Text = url;
+        if (_config.Get("server", "url", "") == url) return;
+        _config.Set("server", "url", url);
+        _config.Save();
+        _status.Text = $"서버 URL 저장됨: {url}";
     }
 
     private void BrowseGamePath()
@@ -482,6 +506,7 @@ public sealed class MainForm : Form
             _ => "full"
         });
         SaveMonitorSelection();
+        SaveServerUrl();
         _config.Save();
         _status.Text = "설정 저장됨";
     }

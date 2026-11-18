@@ -232,7 +232,7 @@ public sealed class LauncherForm : Form
             _guestResult.Visible = true;
             AcceptButton = _runButton;
             _runButton.Focus();
-            _status.Text = $"●  게스트 번호 {_guestIdx} 생성 완료 · 게임 시작 시 클립보드로 복사돼요.";
+            _status.Text = $"●  게스트 번호 {_guestIdx} 생성 완료 · 게임에서 이 번호로 로그인하세요.";
         }
         catch (Exception ex)
         {
@@ -381,15 +381,6 @@ public sealed class LauncherForm : Form
             _guestName.Focus();
             return;
         }
-        try
-        {
-            // 게임 로그인 화면에 붙여넣을 수 있도록 게스트 번호를 클립보드에 복사한다.
-            Clipboard.SetDataObject(_guestIdx, copy: true, retryTimes: 5, retryDelay: 100);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, $"게스트 번호를 클립보드에 복사하지 못했습니다: {ex.Message}\n게스트 번호: {_guestIdx}", "brainWALK", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
 
         string? selfPath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(selfPath) || !File.Exists(selfPath))
@@ -443,7 +434,7 @@ public sealed class LauncherForm : Form
                 UseShellExecute = true,
                 WorkingDirectory = Path.GetDirectoryName(gamePath) ?? ""
             });
-            _status.Text = $"게임이 실행되었습니다. 게스트 번호 {_guestIdx}가 클립보드에 복사돼 있어요.";
+            _status.Text = $"게임이 실행되었습니다. 게스트 번호 {_guestIdx}로 로그인하세요.";
         }
         catch (Exception ex)
         {

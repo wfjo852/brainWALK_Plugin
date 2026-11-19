@@ -23,7 +23,7 @@ if (SIM) $('backLink').href = `../?sim=${SIM}`;
 
 const client = new FemtoClient({ sim: SIM });
 if (SIM && params.get('skill')) client.sim.setSkill(+params.get('skill'));   // 시험: 가상 플레이어 실력 (0~1)
-const stage = new Stage($('stage'), client);
+const stage = new Stage($('stage'), client, { character: 'mirror' });   // 캐릭터 타입: 거울뷰 (GAME_RULEBOOK.md)
 const sound = new Sound();
 const pointer = new HandPointer({ client, mirror: MIRROR, onSelect: () => sound.tick() });
 
@@ -59,10 +59,9 @@ bindChoice('optPlayers', 'players', v => +v);
 bindChoice('optMove', 'move', v => v);
 bindChoice('optRounds', 'rounds', v => +v);
 
-// 화면 보기 설정 (모든 게임 공통으로 저장): 배경 보이기/지우기, 스켈레톤 보이기/숨기기
+// 화면 보기 설정 (이 PC에 저장): 스켈레톤 보이기/숨기기 (거울뷰라 영상·글로우는 항상 보임)
 function renderView() {
   $('optView').querySelectorAll('button').forEach(b => b.classList.toggle('on', !!viewOptions[b.dataset.k]));
-  $('vBackground').textContent = viewOptions.background ? '보이기' : '지우기';
   $('vSkeleton').textContent = viewOptions.skeleton ? '보이기' : '숨기기';
 }
 $('optView').addEventListener('click', e => {
@@ -569,7 +568,7 @@ function loop() {
     const preview = phase === 'setup'
       ? pickBodies(client, opts.players, MIRROR).map((b, i) => ({ present: true, bodyId: b.id, color: PLAYER_COLORS[i] }))
       : [];
-    stage.draw({ players: preview, mirror: MIRROR, flags: false });
+    stage.draw({ players: preview, mirror: MIRROR, flags: false, skeleton: viewOptions.skeleton });
     pointer.update(dt);
     show('pointerHint', phase === 'results' && !pointer.visible && client.bodies.size > 0);   // 설정 화면은 안내 문구가 따로 있음
     return;
@@ -586,7 +585,7 @@ function loop() {
   else if (phase === 'back') updateBack(t);
   else if (phase === 'rest') updateRest(t);
 
-  stage.draw({ players, mirror: MIRROR, flags: true });
+  stage.draw({ players, mirror: MIRROR, flags: true, skeleton: viewOptions.skeleton });
   drawTags(t);
   if (phase !== 'command') updateCards();
 }

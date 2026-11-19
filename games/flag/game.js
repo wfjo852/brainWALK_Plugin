@@ -10,7 +10,7 @@
 import { FemtoClient, J } from '../_shared/femto-client.js';
 import { Stage } from '../_shared/video-layer.js';
 import { GameShell, settings } from '../_shared/game-shell.js';
-import { createPlayers, trackPlayers, pickBodies, PLAYER_COLORS } from '../_shared/players.js';
+import { createPlayers, trackPlayers, pickBodies, normalizePersonName, PLAYER_COLORS } from '../_shared/players.js';
 import { isNeutral, limbState, LIMB_NAME } from '../_shared/pose.js';
 import { HandPointer, screenToHand } from '../_shared/hand-pointer.js';
 import { Sound } from '../_shared/sound.js';
@@ -445,7 +445,7 @@ function saveRecords(ranked, mode) {
   const added = ranked.map(p => ({ name: p.name, score: p.score, mode: `${players.length}명 ${mode}`, date: now.toISOString(), _new: true }));
   recs = [...recs, ...added].sort((a, b) => b.score - a.score).slice(0, 10);
   $('best').innerHTML = `<b>최고 기록</b><ol>${recs.slice(0, 5).map(r =>
-    `<li><b>${esc(r.name)}</b> ${r.score.toLocaleString()}점 · ${esc(r.mode)} · ${new Date(r.date).toLocaleDateString()}${r._new ? ' <span class="new">NEW</span>' : ''}</li>`).join('')}</ol>`;
+    `<li><b>${esc(normalizePersonName(r.name))}</b> ${r.score.toLocaleString()}점 · ${esc(r.mode)} · ${new Date(r.date).toLocaleDateString()}${r._new ? ' <span class="new">NEW</span>' : ''}</li>`).join('')}</ol>`;
   try { localStorage.setItem('femto.flag.records', JSON.stringify(recs.map(({ _new, ...r }) => r))); } catch {}
 }
 

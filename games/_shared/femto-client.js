@@ -260,7 +260,6 @@ class SimPlayers {
       timers: [],
     }));
     this.t0 = performance.now();
-    for (const p of this.players) client.people.set('sim' + p.id, { id: 'sim' + p.id, name: ['민준', '서연', '지호', '하은'][p.id - 100] ?? `가상 ${p.id - 99}` });
     setInterval(() => this.tick(), 1000 / 30);
   }
 

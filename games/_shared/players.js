@@ -3,12 +3,16 @@
 //
 //  - 시작할 때 화면에 보이는 사람 중 카메라에 가까운 N명을 골라, 화면 왼쪽부터 P1, P2 … 로 배정
 //  - 게임 중 트래킹이 끊겼다 다시 잡히면(번호가 바뀜) 같은 사람(등록 id) 또는 원래 자리 근처의 사람으로 다시 연결
-//  - 이름은 사람 목록(뷰어에서 등록·수정한 이름)을 쓰고, 없으면 "플레이어 N"
+//  - 이름은 사람 목록(뷰어에서 등록·수정한 이름)을 쓰고, 없으면 "사람 N"
 // ─────────────────────────────────────────────────────────────
 import { J } from './femto-client.js';
 import { PoseReader } from './pose.js';
 
 export const PLAYER_COLORS = ['#ff6b6b', '#4dabf7', '#51cf66', '#fcc419'];
+
+export function normalizePersonName(name) {
+  return name?.replace(/^(?:사람|플레이어)\s*(\d+)$/u, '사람 $1');
+}
 
 export class Player {
   constructor(index, body, client) {
@@ -16,13 +20,13 @@ export class Player {
     this.color = PLAYER_COLORS[index];
     this.bodyId = body.id;
     this.pid = body.pid;
-    this.fallbackName = `플레이어 ${index + 1}`;
+    this.fallbackName = `사람 ${index + 1}`;
     this.lastX = body.pos(J.Pelvis).x;
     this.present = true;
     this.reader = new PoseReader();
     this.client = client;
   }
-  get name() { return this.client.personName(this.pid) || this.fallbackName; }
+  get name() { return normalizePersonName(this.client.personName(this.pid)) || this.fallbackName; }
   get body() { return this.present ? this.client.bodies.get(this.bodyId) : null; }
 }
 

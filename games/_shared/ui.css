@@ -39,6 +39,40 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* ───── 손으로 고르기 ───── */
 .hand-cursor { position: fixed; left: 0; top: 0; width: 104px; height: 104px; margin: -52px 0 0 -52px; pointer-events: none; z-index: 100; will-change: transform; }
+/* 게임 공통 틀 (game-shell.js): 헤더 = 게임 이름, 푸터 = 처음으로 · 스켈레톤 · 게임 나가기 */
+:root { --shell-top: 0px; --shell-bottom: 0px; }
+html.has-shell { --shell-top: 60px; --shell-bottom: 82px; }
+html.has-shell.no-shell-head { --shell-top: 0px; }
+/* 게임 종료 확인 */
+.shell-quit { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: rgba(0,0,0,.6); }
+.shell-quit .panel { padding: 30px 40px; text-align: center; min-width: min(560px, calc(100vw - 32px)); box-sizing: border-box; }
+.shell-quit h2 { margin: 0 0 8px; font-size: 40px; }
+.shell-quit p { margin: 0 0 20px; font-size: 22px; color: #c3cad6; }
+.shell-quit .row { display: flex; gap: 16px; justify-content: center; }
+.shell-quit button { padding: 18px 30px; border-radius: 18px; border: 3px solid rgba(255,255,255,.18); background: rgba(255,255,255,.07); font-size: 28px; font-weight: 800; color: var(--text); }
+.shell-quit button.yes { background: var(--bad); border-color: var(--bad); color: #fff; }
+.shell-head { position: fixed; left: 0; right: 0; top: 0; height: var(--shell-top); z-index: 40; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+  background: #07090d; border-bottom: 2px solid rgba(255,255,255,.08); }
+.shell-head .shell-name { font-size: 30px; font-weight: 900; letter-spacing: -.5px; }
+/* 푸터: 왼쪽 = 게임 다시 시작 · 가운데 = 스켈레톤 · 오른쪽 = 게임 나가기/게임 종료 */
+.shell-foot { position: fixed; left: 0; right: 0; bottom: 0; height: var(--shell-bottom); z-index: 40; box-sizing: border-box; padding: 0 20px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 18px;
+  background: #07090d; border-top: 2px solid rgba(255,255,255,.08); }
+.shell-foot > div { display: flex; gap: 14px; align-items: center; min-width: 0; }
+.shell-foot .l { justify-content: flex-start; }
+.shell-foot .c { justify-content: center; }
+.shell-foot .r { justify-content: flex-end; }
+.shell-foot button { padding: 10px 26px; border-radius: 16px; border: 3px solid rgba(255,255,255,.18); background: rgba(255,255,255,.07); font-size: 24px; font-weight: 800; color: var(--text); white-space: nowrap; }
+.shell-foot button small { font-size: 17px; font-weight: 700; color: var(--muted); margin-left: 4px; }
+.shell-foot button.on { border-color: var(--ok); }
+.shell-foot button.on small { color: var(--ok); }
+/* 인원 선택 (시작 전 화면, 제목 밑) */
+.shell-players { margin: 6px 0 14px; }
+.shell-players label { display: block; margin-bottom: 10px; color: #c3cad6; font-size: 22px; font-weight: 700; }
+.shell-players .opts { display: flex; gap: 14px; flex-wrap: wrap; }
+.shell-players button { min-width: 96px; padding: 14px 22px; border-radius: 18px; border: 3px solid rgba(255,255,255,.16); background: rgba(255,255,255,.07); font-size: 28px; font-weight: 800; color: var(--text); }
+.shell-players button.on { background: var(--text); color: #0b0e13; border-color: var(--text); }
+
 .hand-cursor svg { position: absolute; inset: 0; transform: rotate(-90deg); overflow: visible; }
 /* 손 커서: 배경 · 테두리 · 테두리 인디케이터 · 손 모양 (hand-pointer.js) */
 .hand-cursor .bg { fill: rgba(10, 14, 20, .45); stroke: none; transition: fill .15s; }

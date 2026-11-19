@@ -4,7 +4,9 @@
 //  흐름: 설정(깰 사진들 고르기, 손으로도 고름) → 던지기(사진이 조금씩 깨짐) → 한 장 다 깨면 다음 사진 → 모두 깨면 결과
 //  - 던지기: 손을 뒤로 뺐다가 카메라 쪽으로 휙 (_shared/throw.js). 오른쪽에서 던지면 사진 오른쪽에 맞음
 //  - 던지는 것(공·토마토·달걀)은 던질 때마다 무작위
-//  - 여러 명이 함께 던져도 됨 (보이는 사람 모두). 던진 물건·맞은 자리는 그 사람 색(P1 빨강, P2 파랑 …)
+//  - 최대 인원(공통 설정, 기본 4명)까지 함께 던짐. 적어도 진행, 게임 중에 들어와도 자리가 남으면 참여
+//    던진 물건·맞은 자리는 그 사람 색(P1 빨강, P2 파랑 …). 최대 인원 밖의 사람은 던져도 무시
+//  - 공통 틀(game-shell.js): 헤더 = 게임 이름, 푸터 = 게임 다시 시작·스켈레톤·게임 나가기, 최대 인원 = 게임 고르기 화면
 //  - 캐릭터 타입: 그림자뷰 (GAME_RULEBOOK.md) — 사진 위에 사람이 번진 그림자로 겹쳐 보임 (영상은 안 보임)
 //    그리는 순서: 사진판 → 사람 그림자 → 날아가는 것·조각·"쾅!" (그림자가 효과를 가리지 않게)
 //  - 사진판이 화면 전체, 위에는 대기 중인 사진 줄
@@ -18,7 +20,8 @@ import { Sound } from '../_shared/sound.js';
 import { HandPointer } from '../_shared/hand-pointer.js';
 import { ThrowDetector } from '../_shared/throw.js';
 import { Stage } from '../_shared/video-layer.js';
-import { PLAYER_COLORS } from '../_shared/players.js';
+import { Player, pickBodies, trackPlayers } from '../_shared/players.js';
+import { GameShell, settings } from '../_shared/game-shell.js';
 import { PhotoBoard } from './board.js';
 import { listPhotos, addImageFile, addText, removePhoto, ensureDefaults, loadImage } from './photos.js';
 
@@ -38,6 +41,8 @@ const people = new Stage($('people'), client, { character: 'shadow' });
 const sound = new Sound();
 const det = new ThrowDetector({ gentle: true, mirror: true });
 const pointer = new HandPointer({ client, onSelect: () => sound.success() });
+// 공통 틀: 헤더(게임 이름)·푸터(게임 다시 시작·스켈레톤·게임 나가기). 최대 참여 인원은 게임 고르기 화면에서 정함
+const shell = new GameShell({ name: '사진 깨기', icon: '📸', sim: SIM, onHome: () => { sound.stop(); setPhase('setup'); } });
 
 // ───────── 설정 저장 ─────────
 // skip: 게임에서 뺀 사진 id (나머지는 모두 순서대로 나옴)
@@ -192,7 +197,8 @@ let game = null;
 let phaseStart = 0;
 const projectiles = [], frags = [], particles = [], pops = [], rings = [];
 let shake = 0;
-const stats = new Map();   // bodyId → { throws, name, color }
+// 참가자: 최대 인원(공통 설정)까지. 게임 중에 들어온 사람도 자리가 남으면 참여 (화면 왼쪽부터 P1 …)
+let players = [];   // Player (players.js) + throws
 
 function show(id, on) { $(id).classList.toggle('hidden', !on); }
 function setPhase(p) {
@@ -201,7 +207,6 @@ function setPhase(p) {
   show('setup', p === 'setup');
   show('guide', p === 'play' || p === 'done');
   show('results', p === 'results');
-  show('stop', p === 'play' || p === 'done');
   show('cardsL', p !== 'setup'); show('cardsR', p !== 'setup');
   show('queueBar', p === 'play' || p === 'done');
   show('qrMini', qrReady && p !== 'setup');   // 게임 중에도 QR로 사진 계속 받기
@@ -213,8 +218,7 @@ function setPhase(p) {
 $('start').onclick = startGame;
 $('again').onclick = () => startGame();
 $('toSetup').onclick = () => { sound.stop(); setPhase('setup'); };
-$('toGames').onclick = () => setTimeout(() => (location.href = '../' + (SIM ? `?sim=${SIM}` : '')), 500);
-$('stop').onclick = () => { sound.stop(); setPhase('setup'); };
+$('toGames').onclick = () => setTimeout(() => (location.href = shell.exitUrl), 500);
 addEventListener('keydown', e => {
   if (e.code === 'Escape' && phase !== 'setup') { sound.stop(); setPhase('setup'); }
   if (e.code === 'Space' && phase === 'play') { e.preventDefault(); testThrow(); }
@@ -227,7 +231,8 @@ async function startGame() {
   if (!list.length) { showErr('사진을 먼저 골라 주세요'); return; }
   sound.unlock();
   det.setGentle(opts.power === 'gentle');
-  stats.clear();
+  players = [];
+  joinPlayers();
   const now = performance.now() / 1000;
   game = { t0: now, throws: 0, best: 0, lastThrow: now, lastHint: now, said: new Set(), finishedAt: 0,
            queue: [...list], idx: -1, cleared: 0, nextAt: 0, fresh: new Set(), lastObj: null };
@@ -311,23 +316,25 @@ function layout() {
 const toFx = (x, y) => ({ x: L.board.x + x * L.board.s, y: L.board.y + y * L.board.s });
 
 // ───────── 던지기 ─────────
-function bodyInfo(body) {
-  let s = stats.get(body.id);
-  if (!s) {
-    const order = [...client.bodies.values()].sort((a, b) => b.pos(J.Pelvis).x - a.pos(J.Pelvis).x);   // 거울: 화면 왼쪽부터
-    // 색: 화면 왼쪽부터 P1 빨강, P2 파랑 … (지금 보이는 다른 사람과 겹치지 않게)
-    const used = new Set([...stats.entries()].filter(([id]) => client.bodies.has(id)).map(([, v]) => v.color));
-    const want = PLAYER_COLORS[Math.max(0, order.indexOf(body)) % PLAYER_COLORS.length];
-    const color = used.has(want) ? (PLAYER_COLORS.find(c => !used.has(c)) ?? want) : want;
-    s = { throws: 0, color, fallback: `참가자 ${stats.size + 1}` };
-    stats.set(body.id, s);
+/** 빈자리가 있으면 보이는 사람을 참가자로 (가까운 사람 우선, 화면 왼쪽부터 번호) */
+function joinPlayers() {
+  trackPlayers(players, client);
+  const free = settings.players - players.length;
+  if (free <= 0) return;
+  const taken = new Set(players.map(p => p.bodyId));
+  const fresh = pickBodies({ bodies: new Map([...client.bodies].filter(([id]) => !taken.has(id))) }, free, true);
+  for (const b of fresh) {
+    const p = new Player(players.length, b, client);
+    p.throws = 0;
+    players.push(p);
   }
-  s.name = client.personName(body.pid) || s.fallback;
-  return s;
 }
+const playerOf = body => players.find(p => p.present && p.bodyId === body.id);
 
 function launch({ body, handJoint, power, aim }) {
   if (!board || board.done) return;
+  const pl = body ? playerOf(body) : null;
+  if (body && !pl) return;   // 참가자가 아닌 사람 (최대 인원을 넘은 사람)
   const now = performance.now() / 1000;
   // 던지는 것은 매번 무작위 (바로 전과 같은 게 연달아 나오지 않게)
   const keys = Object.keys(OBJECTS).filter(k => k !== game.lastObj);
@@ -343,17 +350,17 @@ function launch({ body, handJoint, power, aim }) {
   }
   const from = { x: fx0 * L.W, y: L.H + 40 };
   const to = toFx(target.x, target.y);
-  const color = body ? bodyInfo(body).color : '#ffd23f';
+  const color = pl ? pl.color : '#ffd23f';
   projectiles.push({ from, to, t0: now, dur: 0.55 - power * 0.12, obj: objKey, power, color, tx: target.x, ty: target.y, spin: (Math.random() - 0.5) * 14 });
   game.throws++;
   game.best = Math.max(game.best, power);
   game.lastThrow = now;
-  if (body) bodyInfo(body).throws++;
+  if (pl) pl.throws++;
   sfx.whoosh(power);
 }
 
 function testThrow() {
-  const body = [...client.bodies.values()][0];
+  const body = players.find(p => p.present)?.body;
   launch({ body, handJoint: J.HandRight, power: 0.6, aim: { nx: 0.3 + Math.random() * 0.4, ny: 0.3 + Math.random() * 0.4 } });
 }
 
@@ -435,7 +442,7 @@ function showResults() {
   $('rTime').textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
   $('rPower').textContent = Math.round(game.best * 100) + '%';
   $('praise').textContent = game.throws <= 20 ? '힘이 대단하세요! 💪' : '끝까지 잘하셨어요! 👏';
-  $('who').innerHTML = [...stats.values()].filter(s => s.throws).map(s => `<span style="--c:${s.color}">${esc(s.name)} <b>${s.throws}</b>번</span>`).join('');
+  $('who').innerHTML = players.filter(s => s.throws).map(s => `<span style="--c:${s.color}">${esc(s.name)} <b>${s.throws}</b>번</span>`).join('');
 }
 
 // ───────── 매 프레임 ─────────
@@ -446,6 +453,7 @@ function frame(nowMs) {
   const now = nowMs / 1000;
   layout();
 
+  if (phase === 'play' || phase === 'done') joinPlayers();
   if (phase === 'play') {
     for (const t of det.update(client.bodies, now)) launch({ body: client.bodies.get(t.bodyId), ...t });
     const here = client.bodies.size > 0;
@@ -517,8 +525,8 @@ function draw(now) {
   c.drawImage(board.canvas, b.x + sx, b.y + sy, b.w, b.h);
 
   // 사람 그림자 (그림자뷰): 사진 위, 효과 아래. 글로우 색 = 그 사람 색 (던진 물건·고리와 같은 색)
-  const players = [...client.bodies.values()].map(body => ({ present: true, bodyId: body.id, color: bodyInfo(body).color }));
-  people.draw({ players, mirror: true, background: null });
+  // 참가자만 그림자 (최대 인원 밖의 사람은 안 보임). 스켈레톤은 공통 설정
+  people.draw({ players, mirror: true, others: false, skeleton: settings.skeleton, background: null });
   c.drawImage(people.canvas, 0, 0, L.W, L.H);
 
   // 떨어지는 조각
@@ -632,20 +640,20 @@ function roundRect(c, x, y, w, h, r) {
 let cardsKey = '';
 function renderCards() {
   if (phase === 'setup') return;
-  const list = [...client.bodies.values()].sort((a, b) => b.pos(J.Pelvis).x - a.pos(J.Pelvis).x).slice(0, 4).map(bodyInfo);
-  const key = list.map(s => s.name + s.throws + s.color).join('|');
+  const list = players;
+  const key = list.map(s => s.name + s.throws + s.color + s.present).join('|');
   if (key === cardsKey) return;
   cardsKey = key;
-  const html = s => `<div class="card panel" style="--c:${s.color}"><div class="n">${esc(s.name)}</div><div class="s">${s.throws}<small>번</small></div></div>`;
+  const html = s => `<div class="card panel${s.present ? '' : ' away'}" style="--c:${s.color}"><div class="n">${esc(s.name)}</div><div class="s">${s.throws}<small>번</small></div></div>`;
   const half = Math.ceil(list.length / 2);
   $('cardsL').innerHTML = list.slice(0, half).map(html).join('');
   $('cardsR').innerHTML = list.slice(half).map(html).join('');
 }
 
 function updateSeen() {
-  const n = client.bodies.size, el = $('seen');
+  const n = client.bodies.size, max = settings.players, el = $('seen');
   const txt = client.connected === false && !SIM ? '⚠ 에이전트에 연결되지 않았어요 (run.bat 실행 확인)'
-    : n ? `카메라에 <b>${n}명</b>이 보여요 · 여러 명이 함께 던져도 돼요` : '카메라 앞에 서 주세요';
+    : n ? `카메라에 <b>${n}명</b>이 보여요 · 최대 <b>${max}명</b>까지 함께 던져요` : `카메라 앞에 서 주세요 · 최대 <b>${max}명</b>까지 함께 던져요`;
   if (el.innerHTML !== txt) el.innerHTML = txt;
   el.classList.toggle('warn', !n);
 }

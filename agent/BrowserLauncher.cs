@@ -12,11 +12,38 @@ namespace FemtoSkeletonAgent;
 /// </summary>
 public static class BrowserLauncher
 {
+    static string Local => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+    /// <summary>게임 창 전용 브라우저 프로필 (평소 브라우저와 분리)</summary>
+    public static string ProfileDir => Path.Combine(Local, "FemtoSkeleton", "browser");
+
+    /// <summary>
+    /// 게임 창 닫기 (게임 종료 버튼): 전용 프로필로 뜬 Edge/Chrome만 닫음. 평소 쓰는 브라우저는 건드리지 않음.
+    /// 먼저 정상 종료를 요청하고, 3초 뒤에도 남아 있으면 강제로 닫음.
+    /// </summary>
+    public static void CloseAppWindows()
+    {
+        var profile = ProfileDir.Replace("'", "''");
+        var script =
+            "$p = { Get-CimInstance Win32_Process -Filter \"Name='msedge.exe' or Name='chrome.exe'\" | " +
+            $"Where-Object {{ $_.CommandLine -like '*{profile}*' }} }}; " +
+            "& $p | Where-Object { $_.CommandLine -notlike '*--type=*' } | ForEach-Object { taskkill /PID $_.ProcessId /T 2>$null | Out-Null }; " +
+            "Start-Sleep -Seconds 3; " +
+            "& $p | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
+        try
+        {
+            var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+            using var ps = Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -NonInteractive -EncodedCommand {encoded}")
+            { UseShellExecute = false, CreateNoWindow = true });
+            ps?.WaitForExit(10000);
+        }
+        catch (Exception ex) { Console.WriteLine($"  게임 창을 닫지 못했습니다: {ex.Message}"); }
+    }
+
     public static void Open(string url, bool fullscreen)
     {
         string pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
         string pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string local = Local;
         string[] candidates =
         {
             Path.Combine(pf86, @"Microsoft\Edge\Application\msedge.exe"),
@@ -28,7 +55,7 @@ public static class BrowserLauncher
         var exe = candidates.FirstOrDefault(File.Exists);
         if (exe != null)
         {
-            var profile = Path.Combine(local, "FemtoSkeleton", "browser");
+            var profile = ProfileDir;
             var args = $"--app=\"{url}\" --user-data-dir=\"{profile}\" --autoplay-policy=no-user-gesture-required " +
                        "--no-first-run --no-default-browser-check --disable-features=Translate" +
                        (fullscreen ? " --start-fullscreen" : " --window-size=1600,900");

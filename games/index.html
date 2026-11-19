@@ -11,7 +11,7 @@
   /* 내 모습은 은은하게 뒤에 (지금 내가 화면에 잡히고 있다는 확인용) */
   .dim { position: fixed; inset: 0; background: radial-gradient(ellipse at center, rgba(14,18,24,.55), rgba(14,18,24,.88)); pointer-events: none; }
 
-  main { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3.5vh; padding: 24px; }
+  main { position: fixed; left: 0; right: 0; top: 0; bottom: var(--shell-bottom); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3.5vh; padding: 24px; }
   h1 { margin: 0; font-size: clamp(36px, 5.2vw, 64px); letter-spacing: -1px; text-align: center; }
   .how { margin: 0; font-size: clamp(20px, 2.4vw, 30px); color: var(--muted); text-align: center; }
   .how b { color: var(--text); }
@@ -27,12 +27,15 @@
   .card .tags { margin-top: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
   .card .tags span { padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,.09); font-size: 18px; color: #c3cad6; }
 
+  /* 최대 참여 인원 (공통 설정): 안내 문구 밑, 가운데 */
+  #playersPick { margin: 0; display: flex; align-items: center; gap: 16px; }
+  #playersPick label { margin: 0; }
   #status { font-size: clamp(18px, 2vw, 24px); color: var(--warn); min-height: 1.4em; text-align: center; }
   #status.ok { color: var(--ok); }
 
-  .admin { position: fixed; left: 16px; bottom: 14px; font-size: 13px; color: var(--muted); z-index: 5; }
+  .admin { position: fixed; left: 16px; bottom: calc(var(--shell-bottom) + 10px); font-size: 13px; color: var(--muted); z-index: 5; }
   .admin a { color: var(--muted); }
-  #soundBlocked { position: fixed; right: 16px; bottom: 14px; padding: 10px 16px; border-radius: 12px; background: var(--warn); color: #1a1406; font-weight: 700; z-index: 5; cursor: pointer; }
+  #soundBlocked { position: fixed; right: 16px; bottom: calc(var(--shell-bottom) + 14px); padding: 10px 16px; border-radius: 12px; background: var(--warn); color: #1a1406; font-weight: 700; z-index: 5; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -42,6 +45,7 @@
 <main>
   <h1>어떤 운동을 할까요?</h1>
   <p class="how">✋ <b>손을 들어</b> 하고 싶은 카드 위에 <b>잠시 올려 두세요</b></p>
+  <div id="playersPick"></div>  <!-- 최대 참여 인원 (공통, game-shell.js) -->
   <div class="cards" id="cards"></div>
   <div id="status"></div>
 </main>
@@ -52,6 +56,7 @@
 <script type="module">
 import { FemtoClient } from './_shared/femto-client.js';
 import { Stage } from './_shared/video-layer.js';
+import { GameShell, settings } from './_shared/game-shell.js';
 import { HandPointer, screenToHand } from './_shared/hand-pointer.js';
 import { Sound } from './_shared/sound.js';
 
@@ -85,7 +90,10 @@ document.getElementById('cards').innerHTML = GAMES.map(g => `
 document.getElementById('simLinks').innerHTML = [1, 2, 3, 4].map(n => `<a href="?sim=${n}">${n}명</a>`).join(' ');
 
 const client = new FemtoClient({ sim: SIM });
-const stage = new Stage(document.getElementById('stage'), client);
+const stage = new Stage(document.getElementById('stage'), client, { character: 'mirror' });   // 내 모습 (은은하게 뒤에)
+// 공통 틀: 푸터 = 스켈레톤 · 게임 종료, 최대 참여 인원 = 안내 문구 밑 (모든 게임이 같이 씀)
+const shell = new GameShell({ sim: SIM, buttons: ['skeleton', 'quit'] });
+shell.playersPicker(document.getElementById('playersPick'));
 const sound = new Sound();
 const pointer = new HandPointer({ client, onSelect: el => { sound.success(); sound.say(`${el.dataset.say ?? ''} 시작할게요`, 0.9); } });
 // 선택 후 음성이 조금 들리도록 잠깐 뒤에 이동
@@ -106,7 +114,7 @@ let greeted = false, last = performance.now();
 function loop(now) {
   requestAnimationFrame(loop);
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
-  stage.draw({ others: true });
+  stage.draw({ others: true, skeleton: settings.skeleton });
   pointer.update(dt);
   const st = document.getElementById('status');
   const n = client.bodies.size;

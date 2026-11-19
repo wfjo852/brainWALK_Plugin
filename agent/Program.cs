@@ -101,6 +101,21 @@ app.MapGet("/tts", async (string? text, int? rate) =>
     return wav == null ? Results.StatusCode(503) : Results.File(wav, "audio/wav");
 });
 
+// 게임 종료 (게임 고르기 화면의 "게임 종료" 버튼): 게임 창을 닫고 에이전트도 끔
+//  - 이 PC에서만 (문지기), 게임 화면에서 보낸 요청만 (X-Femto 머리글: 다른 웹사이트가 몰래 끄지 못하게)
+app.MapPost("/api/quit", (HttpContext ctx, IHostApplicationLifetime life) =>
+{
+    if (ctx.Request.Headers["X-Femto"] != "quit") return Results.StatusCode(403);
+    Console.WriteLine("  게임 화면에서 종료 요청 → 게임 창을 닫고 종료합니다");
+    _ = Task.Run(async () =>
+    {
+        await Task.Delay(300);   // 응답을 먼저 보내고
+        BrowserLauncher.CloseAppWindows();
+        life.StopApplication();
+    });
+    return Results.Ok();
+});
+
 // 게임별 서버 기능: /api/<게임>/...
 foreach (var m in gameModules)
     m.Map(app.MapGroup($"/api/{m.Name}"), gameCtx);

@@ -8,7 +8,8 @@
 //        "~하지 마!"를 잘 참으면 100 + 연속 보너스. 틀리거나 놓치면 0점(감점 없음), 연속 끊김.
 // ─────────────────────────────────────────────────────────────
 import { FemtoClient, J } from '../_shared/femto-client.js';
-import { Stage, viewOptions, setViewOption } from '../_shared/video-layer.js';
+import { Stage } from '../_shared/video-layer.js';
+import { GameShell, settings } from '../_shared/game-shell.js';
 import { createPlayers, trackPlayers, pickBodies, PLAYER_COLORS } from '../_shared/players.js';
 import { isNeutral, limbState, LIMB_NAME } from '../_shared/pose.js';
 import { HandPointer, screenToHand } from '../_shared/hand-pointer.js';
@@ -19,10 +20,10 @@ const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const SIM = Math.max(0, Math.min(4, parseInt(params.get('sim') || '0', 10) || 0));
 const MIRROR = true;
-if (SIM) $('backLink').href = `../?sim=${SIM}`;
 
 const client = new FemtoClient({ sim: SIM });
 if (SIM && params.get('skill')) client.sim.setSkill(+params.get('skill'));   // 시험: 가상 플레이어 실력 (0~1)
+const shell = new GameShell({ name: '청기백기', icon: '🚩', sim: SIM, onHome: () => { sound.stop(); setPhase('setup'); } });   // 공통 틀: 헤더·푸터·인원·스켈레톤
 const stage = new Stage($('stage'), client, { character: 'mirror' });   // 캐릭터 타입: 거울뷰 (GAME_RULEBOOK.md)
 const sound = new Sound();
 const pointer = new HandPointer({ client, mirror: MIRROR, onSelect: () => sound.tick() });
@@ -37,10 +38,9 @@ const BACK_EXTRA_WAIT = 2.5;                                   // 모두 내릴 
 const REST_EVERY = 10, REST_SECONDS = 12;                      // 10번마다 잠깐 쉬기
 
 // ───────── 설정 ─────────
-const opts = { players: 1, move: 'both', rounds: 10, voice: true };
+const opts = { move: 'both', rounds: 10, voice: true };   // 인원은 공통 설정(settings.players)
 try { Object.assign(opts, JSON.parse(localStorage.getItem('femto.flag.opts2') || '{}')); } catch {}
 delete opts.level;   // v1.5까지의 빠르기 선택 (이제 자동)
-if (SIM && opts.players > SIM) opts.players = SIM;
 
 function bindChoice(id, key, parse) {
   const box = $(id);
@@ -55,22 +55,9 @@ function bindChoice(id, key, parse) {
   }
   sync();
 }
-bindChoice('optPlayers', 'players', v => +v);
 bindChoice('optMove', 'move', v => v);
 bindChoice('optRounds', 'rounds', v => +v);
 
-// 화면 보기 설정 (이 PC에 저장): 스켈레톤 보이기/숨기기 (거울뷰라 영상·글로우는 항상 보임)
-function renderView() {
-  $('optView').querySelectorAll('button').forEach(b => b.classList.toggle('on', !!viewOptions[b.dataset.k]));
-  $('vSkeleton').textContent = viewOptions.skeleton ? '보이기' : '숨기기';
-}
-$('optView').addEventListener('click', e => {
-  const b = e.target.closest('button');
-  if (!b) return;
-  setViewOption(b.dataset.k, !viewOptions[b.dataset.k]);
-  renderView();
-});
-renderView();
 function updateSafety() { $('safety').classList.toggle('hidden', opts.move !== 'both'); }
 updateSafety();
 
@@ -93,7 +80,6 @@ function setPhase(p) {
   const cardsOn = ['ready', 'count', 'command', 'link', 'back', 'rest'].includes(p);
   show('cardsL', cardsOn); show('cardsR', cardsOn);
   show('results', p === 'results');
-  show('stop', p !== 'setup' && p !== 'results');
   if (p === 'setup' || p === 'results') clearTags();
   // 손으로 고르기는 설정·결과 화면에서만 (게임 중엔 팔 동작이 게임 동작이므로)
   pointer.enabled = p === 'setup' || p === 'results';
@@ -104,30 +90,32 @@ function setPhase(p) {
 $('start').onclick = startReady;
 $('again').onclick = startReady;
 $('toSetup').onclick = () => setPhase('setup');
-$('toGames').onclick = () => { location.href = $('backLink').href; };
-$('stop').onclick = () => { sound.stop(); setPhase('setup'); };
+$('toGames').onclick = () => { location.href = shell.exitUrl; };
+
+// 인원 = 최대 인원 (공통 설정). 그보다 적어도 1명 이상이면 시작 (보이는 사람 중 가까운 순으로 최대 인원까지)
+const playCount = () => Math.min(settings.players, client.bodies.size);
 
 function updateSetup() {
-  const n = client.bodies.size, need = opts.players, st = client.status;
+  const n = playCount(), max = settings.players, st = client.status;
   const btn = $('start'), seen = $('seen');
   if (!client.connected || st.state === 'error') {
     seen.innerHTML = `⚠ 카메라 프로그램에 연결 중이에요…`; seen.className = 'warn';
     btn.disabled = true;
-  } else if (n < need) {
-    seen.innerHTML = `지금 <b>${n}명</b> 보여요. <b>${need}명</b>이 카메라 앞에 서 주세요.`; seen.className = 'warn';
+  } else if (n < 1) {
+    seen.innerHTML = `카메라 앞에 서 주세요. (최대 <b>${max}명</b>까지 함께 할 수 있어요)`; seen.className = 'warn';
     btn.disabled = true;
   } else {
-    seen.innerHTML = `<b>${need}명</b> 준비됐어요! <b>시작</b> 위에 손을 올려 두세요.${SIM ? ' <span style="color:var(--warn)">(가상 플레이어 시험)</span>' : ''}`; seen.className = '';
+    seen.innerHTML = `<b>${n}명</b> 준비됐어요!${n < max ? ` (최대 ${max}명까지 함께 할 수 있어요)` : ''} <b>시작</b> 위에 손을 올려 두세요.${SIM ? ' <span style="color:var(--warn)">(가상 플레이어 시험)</span>' : ''}`; seen.className = '';
     btn.disabled = false;
   }
-  btn.textContent = `▶ ${need}명 시작`;
+  btn.textContent = n > 0 ? `▶ ${n}명 시작` : '▶ 시작';
 }
 
 function startReady() {
-  if (client.bodies.size < opts.players) { setPhase('setup'); return; }
+  if (playCount() < 1) { setPhase('setup'); return; }
   sound.voiceOn = opts.voice;
   sound.unlock();
-  players = createPlayers(client, opts.players, MIRROR);
+  players = createPlayers(client, settings.players, MIRROR);
   for (const p of players) Object.assign(p, { score: 0, streak: 0, ok: 0, total: 0, qSum: 0, qN: 0, rtSum: 0, rtN: 0, firsts: 0, readyHold: 0, result: null });
   game = { adapt: new Adapt(0), index: -1, cmd: null, level: 1, legs: opts.move === 'both' };
   sound.preload(['내려', ...allCommandTexts(game.legs)], 0.95);
@@ -566,9 +554,9 @@ function loop() {
   if (phase === 'setup' || phase === 'results') {
     if (phase === 'setup') updateSetup();
     const preview = phase === 'setup'
-      ? pickBodies(client, opts.players, MIRROR).map((b, i) => ({ present: true, bodyId: b.id, color: PLAYER_COLORS[i] }))
+      ? pickBodies(client, settings.players, MIRROR).map((b, i) => ({ present: true, bodyId: b.id, color: PLAYER_COLORS[i] }))
       : [];
-    stage.draw({ players: preview, mirror: MIRROR, flags: false, skeleton: viewOptions.skeleton });
+    stage.draw({ players: preview, mirror: MIRROR, flags: false, skeleton: settings.skeleton });
     pointer.update(dt);
     show('pointerHint', phase === 'results' && !pointer.visible && client.bodies.size > 0);   // 설정 화면은 안내 문구가 따로 있음
     return;
@@ -585,7 +573,7 @@ function loop() {
   else if (phase === 'back') updateBack(t);
   else if (phase === 'rest') updateRest(t);
 
-  stage.draw({ players, mirror: MIRROR, flags: true, skeleton: viewOptions.skeleton });
+  stage.draw({ players, mirror: MIRROR, flags: true, skeleton: settings.skeleton });
   drawTags(t);
   if (phase !== 'command') updateCards();
 }

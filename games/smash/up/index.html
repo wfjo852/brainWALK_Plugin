@@ -12,24 +12,44 @@
   - 이 페이지는 다른 파일(_shared 등)을 쓰지 않음: 휴대폰에는 이 페이지만 열려 있음
 -->
 <style>
-  :root { --bg: #0b0e13; --panel: #151b25; --line: rgba(255,255,255,.12); --text: #f2f5fa; --muted: #9aa5b5; --ok: #3ddc97; --bad: #ff6b6b; }
+  :root {
+    --bg: #0b131c;
+    --panel: #152230;
+    --line: #334557;
+    --text: #f5f8fc;
+    --muted: #adbdcd;
+    --ok: #79e6ba;
+    --bad: #ff8792;
+    --font: "Pretendard", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+    --type-caption: clamp(.8125rem, .73rem + .45vmin, .9375rem);
+    --type-small: clamp(.875rem, .8rem + .55vmin, 1.0625rem);
+    --type-body: clamp(1rem, .86rem + .7vmin, 1.25rem);
+    --type-control: clamp(1.125rem, .92rem + 1.05vmin, 1.625rem);
+    --type-heading: clamp(1.875rem, 1.25rem + 3.2vmin, 3rem);
+    --space: clamp(14px, 4vmin, 32px);
+    color-scheme: dark;
+  }
   * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif; }
-  main { max-width: 520px; margin: 0 auto; padding: 24px 16px calc(32px + env(safe-area-inset-bottom)); }
-  h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: -.5px; }
-  .lead { margin: 0 0 20px; color: var(--muted); font-size: 17px; line-height: 1.5; }
-  label { display: block; font-weight: 700; color: var(--muted); margin: 0 0 6px; font-size: 15px; }
-  input[type=text] { width: 100%; font: 600 19px inherit; font-family: inherit; padding: 12px 14px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel); color: var(--text); }
-  #pick { display: block; width: 100%; margin-top: 18px; padding: 26px 16px; border-radius: 20px; border: 0; background: var(--ok); color: #0b0e13; font: 900 26px inherit; font-family: inherit; }
-  #pick small { display: block; font-size: 15px; font-weight: 600; opacity: .7; margin-top: 4px; }
+  body { margin: 0; min-height: 100dvh; padding: max(var(--space), env(safe-area-inset-top)) max(var(--space), env(safe-area-inset-right)) max(var(--space), env(safe-area-inset-bottom)) max(var(--space), env(safe-area-inset-left));
+    background: radial-gradient(ellipse at top, #28394e, var(--bg) 75%); color: var(--text); font: var(--type-body)/1.5 var(--font); }
+  main { max-width: 34rem; margin: clamp(0px, 5dvh - 20px, 48px) auto 0; padding: var(--space); border: 1px solid var(--line); border-top: 3px solid #ffbc92;
+    border-radius: clamp(16px, 3vmin, 26px); background: var(--panel); overflow-wrap: anywhere; }
+  h1 { margin: 0 0 .2em; font-size: var(--type-heading); line-height: 1.15; letter-spacing: -.045em; }
+  .lead { margin: 0 0 1.4em; color: var(--muted); font-size: var(--type-body); }
+  label { display: block; font-weight: 700; color: var(--muted); margin: 0 0 6px; font-size: var(--type-small); }
+  input[type=text] { width: 100%; font: 600 var(--type-body)/1.5 var(--font); padding: .65em .85em; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  #pick { display: block; width: 100%; margin-top: 1em; padding: .8em; border-radius: 14px; border: 0; background: var(--ok); color: var(--bg); font: 900 var(--type-control)/1.25 var(--font); cursor: pointer; }
+  #pick small { display: block; font-size: var(--type-small); font-weight: 600; opacity: .7; margin-top: 4px; }
   #pick:disabled { opacity: .5; }
-  #status { margin-top: 18px; min-height: 28px; font-size: 18px; font-weight: 700; text-align: center; }
+  #status { margin-top: 1em; font-size: var(--type-body); font-weight: 700; text-align: center; }
   #status.ok { color: var(--ok); } #status.bad { color: var(--bad); }
   .bar { height: 10px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; margin-top: 10px; }
   .bar i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .2s; }
   #sent { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 18px; }
   #sent img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
-  .hint { margin-top: 22px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+  #sent:empty, #status:empty { display: none; }
+  .hint { margin-top: 22px; color: var(--muted); font-size: var(--type-caption); line-height: 1.5; }
+  input:focus-visible, button:focus-visible { outline: 3px solid #ffca9f; outline-offset: 3px; }
   .hidden { display: none; }
 </style>
 </head>

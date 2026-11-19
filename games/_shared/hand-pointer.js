@@ -88,7 +88,8 @@ export class HandPointer {
   }
 
   targets() {
-    return [...document.querySelectorAll('.hand-target')].filter(el => el.offsetParent !== null && !el.disabled);
+    const scope = document.querySelector('dialog:modal') ?? document;
+    return [...scope.querySelectorAll('.hand-target')].filter(el => el.offsetParent !== null && !el.disabled);
   }
 
   pickBody() {

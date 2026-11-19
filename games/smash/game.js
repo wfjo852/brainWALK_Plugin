@@ -164,29 +164,63 @@ async function pollInbox() {
 setupQr();
 setInterval(pollInbox, 1500);
 
+const addPhotoDialog = $('addPhotoDialog');
+$('addPhoto').onclick = () => {
+  $('textRow').classList.add('hidden');
+  $('textBtn').setAttribute('aria-expanded', 'false');
+  $('textErr').textContent = '';
+  addPhotoDialog.showModal();
+  addPhotoDialog.append(pointer.el);
+};
+$('closeAddPhoto').onclick = () => addPhotoDialog.close();
+addPhotoDialog.onclose = () => {
+  if (!addPhotoDialog.open) document.body.append(pointer.el);
+};
 $('upload').onclick = () => $('file').click();
-$('file').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
-$('textBtn').onclick = () => { $('textRow').classList.toggle('hidden'); $('textIn').focus(); };
-const makeText = async () => {
+function addSelectedFiles(files) {
+  if (!files.length) return;
+  if (addPhotoDialog.open) addPhotoDialog.close();
+  addFiles(files);
+}
+$('file').onchange = e => { addSelectedFiles([...e.target.files]); e.target.value = ''; };
+$('textBtn').onclick = () => {
+  $('textRow').classList.remove('hidden');
+  $('textBtn').setAttribute('aria-expanded', 'true');
+  $('textIn').focus();
+};
+$('textRow').onsubmit = async e => {
+  e.preventDefault();
+  const submit = $('textMake');
+  if (submit.disabled) return;
+  submit.disabled = true;
+  $('textErr').textContent = '';
+  showErr('');
   try {
     const p = await addText($('textIn').value);
-    $('textIn').value = ''; $('textRow').classList.add('hidden');
-    await refreshGallery([p.id]); sound.success();
-  } catch (e) { showErr(e.message); }
+    await photosArrived([p]);
+    $('textIn').value = '';
+    if (addPhotoDialog.open) addPhotoDialog.close();
+  } catch (err) {
+    if (addPhotoDialog.open) $('textErr').textContent = err.message;
+    else showErr(err.message);
+  } finally {
+    submit.disabled = false;
+  }
 };
-$('textMake').onclick = makeText;
-$('textIn').onkeydown = e => { if (e.key === 'Enter') makeText(); e.stopPropagation(); };
+$('textIn').onkeydown = e => {
+  if (e.key.startsWith('Arrow')) e.stopPropagation();
+};
 // 끌어다 놓기·붙여넣기
 addEventListener('dragover', e => { if (phase !== 'setup') return; e.preventDefault(); $('dropHint').classList.remove('hidden'); });
 addEventListener('dragleave', e => { if (!e.relatedTarget) $('dropHint').classList.add('hidden'); });
 addEventListener('drop', e => {
   e.preventDefault(); $('dropHint').classList.add('hidden');
-  if (phase === 'setup') addFiles([...e.dataTransfer.files].filter(f => f.type.startsWith('image/')));
+  if (phase === 'setup') addSelectedFiles([...e.dataTransfer.files].filter(f => f.type.startsWith('image/')));
 });
 addEventListener('paste', e => {
   if (phase !== 'setup') return;
   const files = [...e.clipboardData.files].filter(f => f.type.startsWith('image/'));
-  if (files.length) addFiles(files);
+  if (files.length) { e.preventDefault(); addSelectedFiles(files); }
 });
 ensureDefaults().then(() => refreshGallery());
 
@@ -302,7 +336,8 @@ function layout() {
     fx.width = Math.round(fr.width * dpr); fx.height = Math.round(fr.height * dpr);
   }
   // 사진판: 아래 칸 전체의 가운데 (사람 모습은 보이지 않음)
-  const areaX = 20, areaY = 16, areaW = fr.width - 40, areaH = fr.height - 32;
+  const areaX = Math.min(20, fr.width * 0.04), areaY = Math.min(16, fr.height * 0.05);
+  const areaW = fr.width - 2 * areaX, areaH = fr.height - 2 * areaY;
   let b = null;
   if (board) {
     const s = Math.min(areaW * 0.96 / board.W, areaH * 0.94 / board.H);
@@ -506,6 +541,7 @@ function draw(now) {
   if (!board || phase === 'setup') return;
   const b = L.board;
   const sx = shake ? (Math.random() - 0.5) * 18 * shake : 0, sy = shake ? (Math.random() - 0.5) * 18 * shake : 0;
+  const effectScale = Math.min(1.25, Math.min(L.W, L.H) / 540);
 
   // 사진 뒤 벽 (깨진 자리로 보임)
   c.save();
@@ -517,8 +553,8 @@ function draw(now) {
   c.globalAlpha = 0.9;
   c.fillStyle = '#ffffff';
   c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.font = `900 ${Math.round(b.h * 0.16)}px "Malgun Gothic", sans-serif`;
-  c.fillText('😊 후련해요!', b.x + b.w / 2, b.y + b.h / 2);
+  c.font = `900 ${Math.max(1, Math.round(Math.min(b.h * 0.16, b.w * 0.14)))}px "Malgun Gothic", sans-serif`;
+  c.fillText('😊 후련해요!', b.x + b.w / 2, b.y + b.h / 2, b.w * 0.9);
   c.restore();
 
   // 사진판
@@ -563,7 +599,7 @@ function draw(now) {
       y: p.from.y + (p.to.y - p.from.y) * q - Math.sin(Math.PI * q) * 160,
     });
     const { x, y } = pos(k);
-    const size = 120 * (1 - 0.5 * k);
+    const size = 120 * effectScale * (1 - 0.5 * k);
     // 꼬리 (던진 사람 색)
     for (let t = 1; t <= 6; t++) {
       const q = k - t * 0.035;
@@ -594,14 +630,17 @@ function draw(now) {
   for (let i = pops.length - 1; i >= 0; i--) {
     const p = pops[i], k = (now - p.t0) / 0.9;
     if (k >= 1) { pops.splice(i, 1); continue; }
-    const size = (60 + 40 * p.big) * (k < 0.15 ? k / 0.15 * 1.2 : 1.2 - 0.2 * (k - 0.15));
+    const size = Math.max(1, (60 + 40 * p.big) * effectScale * (k < 0.15 ? k / 0.15 * 1.2 : 1.2 - 0.2 * (k - 0.15)));
     c.save();
     c.globalAlpha = k > 0.7 ? (1 - k) / 0.3 : 1;
     c.font = `900 ${Math.round(size)}px "Malgun Gothic", sans-serif`;
     c.textAlign = 'center'; c.textBaseline = 'middle';
-    const py = Math.max(size * 0.7, p.y - 60 - 40 * k);   // 위쪽에서 잘리지 않게
-    c.lineWidth = size * 0.14; c.strokeStyle = '#1a1406'; c.strokeText(p.text, p.x, py);
-    c.fillStyle = p.color || '#ffd23f'; c.fillText(p.text, p.x, py);
+    const maxWidth = L.W * 0.9;
+    const halfWidth = Math.min(maxWidth, c.measureText(p.text).width) / 2 + size * 0.1;
+    const px = Math.max(halfWidth, Math.min(L.W - halfWidth, p.x));
+    const py = Math.max(size * 0.7, p.y - (60 + 40 * k) * effectScale);
+    c.lineWidth = size * 0.14; c.strokeStyle = '#1a1406'; c.strokeText(p.text, px, py, maxWidth);
+    c.fillStyle = p.color || '#ffd23f'; c.fillText(p.text, px, py, maxWidth);
     c.restore();
   }
 }

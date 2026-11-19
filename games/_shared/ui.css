@@ -1,25 +1,41 @@
 /* 게임 공통 스타일 (어두운 무대 위에 크게 잘 보이도록) */
 :root {
-  --bg: #0e1218;
-  --panel: rgba(16, 20, 28, 0.86);
-  --line: rgba(255, 255, 255, 0.1);
-  --text: #eef1f6;
-  --muted: #9aa3b2;
-  --ok: #3ddc97;
+  --type-caption: clamp(0.75rem, 0.69rem + 0.35vmin, 0.875rem);
+  --type-small: clamp(0.8125rem, 0.73rem + 0.58vmin, 1.0625rem);
+  --type-body: clamp(0.875rem, 0.75rem + 0.75vmin, 1.25rem);
+  --type-label: clamp(0.9375rem, 0.77rem + 0.95vmin, 1.375rem);
+  --type-lead: clamp(1rem, 0.78rem + 1.05vmin, 1.5rem);
+  --type-control: clamp(1.0625rem, 0.8rem + 1.45vmin, 1.75rem);
+  --type-heading: clamp(1.25rem, 0.85rem + 1.9vmin, 2.125rem);
+  --type-title: clamp(1.5rem, 1rem + 2.5vmin, 2.75rem);
+  --type-display: clamp(1.875rem, 1.2rem + 3.2vmin, 3.5rem);
+  --bg: #0b131c;
+  --panel: #152230;
+  --surface: #1b2a39;
+  --line: #334557;
+  --text: #f5f8fc;
+  --muted: #adbdcd;
+  --ok: #79e6ba;
   --bad: #ff5d6c;
   --warn: #f5b84b;
   --blue: #2f6bff;
   --white: #f4f6fa;
-  --font: "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+  --font: "Pretendard", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --gutter: clamp(12px, 2.5vmin, 28px);
+  --panel-pad: clamp(14px, 3vmin, 36px);
+  --radius: clamp(14px, 2.4vmin, 26px);
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 16px/1.45 var(--font); overflow: hidden; }
-button { font: inherit; color: inherit; cursor: pointer; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; }
+body { font: var(--type-body)/1.5 var(--font); }
+button, input { font: inherit; }
+button { color: inherit; cursor: pointer; }
 .hidden { display: none !important; }
 
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; backdrop-filter: blur(12px); }
+.panel { background: linear-gradient(145deg, var(--surface), var(--panel) 65%); border: 1px solid var(--line); border-radius: var(--radius); }
 
-.btn { padding: 12px 22px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.08); font-weight: 600; }
+.btn { padding: .65em 1em; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; }
 .btn:hover { background: rgba(255,255,255,.15); }
 .btn.primary { background: var(--ok); border-color: transparent; color: #0b0e13; }
 .btn.primary:hover { filter: brightness(1.08); }
@@ -30,55 +46,56 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .choice button.on { background: var(--text); color: #0b0e13; }
 
 .topbar { position: fixed; top: 16px; left: 16px; display: flex; gap: 8px; z-index: 20; }
-.topbar a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; }
+.topbar a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: var(--type-caption); }
 .topbar a:hover { color: var(--text); }
 
 @media (max-width: 720px) {
-  html, body { font-size: 14px; }
+  html, body { font-size: var(--type-caption); }
 }
 
 /* ───── 손으로 고르기 ───── */
-.hand-cursor { position: fixed; left: 0; top: 0; width: 104px; height: 104px; margin: -52px 0 0 -52px; pointer-events: none; z-index: 100; will-change: transform; }
+.hand-cursor { --cursor-size: clamp(55px, 12vmin, 104px); position: fixed; left: 0; top: 0; width: var(--cursor-size); height: var(--cursor-size);
+  margin: calc(var(--cursor-size) / -2) 0 0 calc(var(--cursor-size) / -2); pointer-events: none; z-index: 100; will-change: transform; }
 /* 게임 공통 틀 (game-shell.js): 헤더 = 게임 이름, 푸터 = 처음으로 · 스켈레톤 · 게임 나가기 */
 :root { --shell-top: 0px; --shell-bottom: 0px; }
-html.has-shell { --shell-top: 60px; --shell-bottom: 82px; }
+html.has-shell { --shell-top: clamp(38px, 6.5dvh, 64px); --shell-bottom: clamp(58px, 9dvh, 84px); }
 html.has-shell.no-shell-head { --shell-top: 0px; }
 /* 게임 종료 확인 */
 .shell-quit { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: rgba(0,0,0,.6); }
-.shell-quit .panel { padding: 30px 40px; text-align: center; min-width: min(560px, calc(100vw - 32px)); box-sizing: border-box; }
-.shell-quit h2 { margin: 0 0 8px; font-size: 40px; }
-.shell-quit p { margin: 0 0 20px; font-size: 22px; color: #c3cad6; }
-.shell-quit .row { display: flex; gap: 16px; justify-content: center; }
-.shell-quit button { padding: 18px 30px; border-radius: 18px; border: 3px solid rgba(255,255,255,.18); background: rgba(255,255,255,.07); font-size: 28px; font-weight: 800; color: var(--text); }
-.shell-quit button.yes { background: var(--bad); border-color: var(--bad); color: #fff; }
+.shell-quit .panel { padding: var(--panel-pad); text-align: center; width: min(36rem, calc(100% - 2 * var(--gutter))); }
+.shell-quit h2 { margin: 0 0 8px; font-size: var(--type-title); }
+.shell-quit p { margin: 0 0 20px; font-size: var(--type-label); color: #c3cad6; }
+.shell-quit .row { display: flex; flex-wrap: wrap; gap: .65em; justify-content: center; }
+.shell-quit button { padding: .65em .9em; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-size: var(--type-control); font-weight: 800; }
+.shell-quit button.yes { background: var(--bad); border-color: var(--bad); color: var(--bg); }
 .shell-head { position: fixed; left: 0; right: 0; top: 0; height: var(--shell-top); z-index: 40; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
-  background: #07090d; border-bottom: 2px solid rgba(255,255,255,.08); }
-.shell-head .shell-name { font-size: 30px; font-weight: 900; letter-spacing: -.5px; }
+  background: var(--bg); border-bottom: 1px solid var(--line); }
+.shell-head .shell-name { font-size: var(--type-control); font-weight: 900; letter-spacing: -.035em; }
 /* 푸터: 왼쪽 = 게임 다시 시작 · 가운데 = 스켈레톤 · 오른쪽 = 게임 나가기/게임 종료 */
-.shell-foot { position: fixed; left: 0; right: 0; bottom: 0; height: var(--shell-bottom); z-index: 40; box-sizing: border-box; padding: 0 20px;
-  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 18px;
-  background: #07090d; border-top: 2px solid rgba(255,255,255,.08); }
-.shell-foot > div { display: flex; gap: 14px; align-items: center; min-width: 0; }
+.shell-foot { position: fixed; left: 0; right: 0; bottom: 0; height: var(--shell-bottom); z-index: 40; padding: 0 var(--gutter);
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: clamp(4px, 1.4vmin, 16px);
+  background: var(--bg); border-top: 1px solid var(--line); }
+.shell-foot > div { display: flex; align-items: center; min-width: 0; }
 .shell-foot .l { justify-content: flex-start; }
 .shell-foot .c { justify-content: center; }
 .shell-foot .r { justify-content: flex-end; }
-.shell-foot button { padding: 10px 26px; border-radius: 16px; border: 3px solid rgba(255,255,255,.18); background: rgba(255,255,255,.07); font-size: 24px; font-weight: 800; color: var(--text); white-space: nowrap; }
-.shell-foot button small { font-size: 17px; font-weight: 700; color: var(--muted); margin-left: 4px; }
+.shell-foot button { padding: .45em .85em; min-height: 42px; max-width: 100%; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-size: var(--type-label); font-weight: 800; line-height: 1.2; word-break: keep-all; overflow-wrap: anywhere; }
+.shell-foot button small { font-size: var(--type-caption); font-weight: 700; color: var(--muted); }
 .shell-foot button.on { border-color: var(--ok); }
 .shell-foot button.on small { color: var(--ok); }
 /* 인원 선택 (시작 전 화면, 제목 밑) */
 .shell-players { margin: 6px 0 14px; }
-.shell-players label { display: block; margin-bottom: 10px; color: #c3cad6; font-size: 22px; font-weight: 700; }
-.shell-players .opts { display: flex; gap: 14px; flex-wrap: wrap; }
-.shell-players button { min-width: 96px; padding: 14px 22px; border-radius: 18px; border: 3px solid rgba(255,255,255,.16); background: rgba(255,255,255,.07); font-size: 28px; font-weight: 800; color: var(--text); }
-.shell-players button.on { background: var(--text); color: #0b0e13; border-color: var(--text); }
+.shell-players label { display: block; margin-bottom: 10px; color: var(--muted); font-size: var(--type-label); font-weight: 700; }
+.shell-players .opts { display: flex; gap: clamp(4px, 1vmin, 10px); flex-wrap: wrap; }
+.shell-players button { min-width: 2.8em; min-height: 44px; padding: .36em .65em; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-size: var(--type-label); font-weight: 800; }
+.shell-players button.on { background: var(--ok); color: var(--bg); border-color: var(--ok); }
 
 .hand-cursor svg { position: absolute; inset: 0; transform: rotate(-90deg); overflow: visible; }
 /* 손 커서: 배경 · 테두리 · 테두리 인디케이터 · 손 모양 (hand-pointer.js) */
 .hand-cursor .bg { fill: rgba(10, 14, 20, .45); stroke: none; transition: fill .15s; }
 .hand-cursor .border { fill: none; stroke: rgba(255,255,255,.6); stroke-width: 8; }
 .hand-cursor .indicator { fill: none; stroke: var(--ok); stroke-width: 11; stroke-linecap: round; stroke-dasharray: 276.5; stroke-dashoffset: 276.5; opacity: 0; transition: opacity .12s; }
-.hand-cursor span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 48px; }
+.hand-cursor span { position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--cursor-size) * .46); }
 .hand-cursor.hover .bg { fill: rgba(150, 240, 190, .6); }              /* 버튼 위에 올라감: 배경 연한 초록 */
 .hand-cursor.locked .indicator { opacity: 1; }                          /* 버튼 위에 고정: 테두리 인디케이터 켜짐 */
 .hand-cursor.fired .bg { fill: var(--ok); }                             /* 클릭된 순간 반짝 */
@@ -86,3 +103,49 @@ html.has-shell.no-shell-head { --shell-top: 0px; }
 .hand-target.hand-hover { outline: 6px solid var(--ok); outline-offset: 4px; }
 .hand-target.hand-picked { transform: scale(.96); }
 .hand-target:focus-visible { outline: 6px solid var(--warn); outline-offset: 4px; }
+
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid var(--warn); outline-offset: 3px; }
+.btn, .shell-foot button, .shell-players button, .big button { transition: background-color .15s, border-color .15s, transform .15s; }
+.shell-foot button:hover, .shell-players button:hover, .big button:hover { border-color: var(--ok); }
+
+@media (max-width: 600px) {
+  .shell-foot { padding-inline: 8px; }
+  .shell-foot button { padding-inline: .35em; }
+  .shell-foot button small { display: block; }
+  .no-shell-head .shell-foot { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .no-shell-head .shell-foot .l:empty { display: none; }
+  .no-shell-head .shell-foot .c { justify-content: flex-start; }
+}
+
+/* 진행 안내의 글자는 실제 패널 폭에 맞춰 조절한다. */
+#headband { grid-template-columns: var(--head-columns); grid-template-rows: minmax(0, 1fr); }
+#headband .center { container-type: inline-size; }
+#headband:not(:has(.center > :not(.hidden), .cards:not(.hidden), #qrMini:not(.hidden))) { visibility: hidden; }
+#setup, #results { border-top: 3px solid var(--game-accent); scrollbar-width: thin; }
+#setup h1, #results h2 { line-height: 1.15; letter-spacing: -.045em; }
+#setup .big button { min-width: 0; min-height: 44px; padding: .55em .85em; }
+#setup:has(.setup-body) { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.setup-body { min-height: 0; overflow: auto; padding: var(--panel-pad); scrollbar-width: thin; }
+.setup-footer { flex: none; padding: .6em var(--panel-pad); border-top: 1px solid var(--line); background: var(--panel); }
+
+@media (max-width: 800px) {
+  #headband {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr) auto;
+    --head-gap: 6px;
+    --head-padding: 6px 8px;
+  }
+  #headband .center { grid-area: 1 / 1 / 2 / -1; }
+  #headband .left { grid-area: 2 / 1; }
+  #headband .right { grid-area: 2 / 2; }
+  #headband .side .cards { max-width: none; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
+  #headband .cards .card { padding: .25em .35em .25em .55em; column-gap: 4px; border-radius: 8px; }
+  #headband .cards .card .n { font-size: var(--type-caption); }
+  #headband .cards .card .s { font-size: var(--type-label); white-space: nowrap; }
+  #headband .cards .card .l { font-size: var(--type-caption); }
+  #headband .cards .card .s small { margin-left: 0; font-size: var(--type-caption); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

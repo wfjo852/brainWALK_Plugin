@@ -107,7 +107,7 @@ async function send(files) {
   try {
     const res = await new Promise((resolve, reject) => {
       const x = new XMLHttpRequest();
-      x.open('POST', '/api/up?t=' + encodeURIComponent(token));
+      x.open('POST', '/api/smash/up?t=' + encodeURIComponent(token));
       x.upload.onprogress = ev => { if (ev.lengthComputable) $('bar').style.width = (ev.loaded / ev.total * 100) + '%'; };
       x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch {} resolve({ status: x.status, ...j }); };
       x.onerror = () => reject(new Error('게임 PC에 연결할 수 없어요'));

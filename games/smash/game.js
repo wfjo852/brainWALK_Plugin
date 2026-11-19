@@ -6,7 +6,7 @@
 //  - 던지는 것(공·토마토·달걀)은 던질 때마다 무작위
 //  - 여러 명이 함께 던져도 됨 (보이는 사람 모두). 던진 물건·맞은 자리는 그 사람 색(P1 빨강, P2 파랑 …)
 //  - 화면에는 사람 모습 없이 사진만 (사진판이 화면 전체), 위에는 대기 중인 사진 줄
-//  - 휴대폰 사진: QR 코드로 /up/ 페이지 → 에이전트가 잠시 보관 → 여기서 가져감 (게임 중에도 계속 받음)
+//  - 휴대폰 사진: QR 코드로 up/ 페이지 (games/smash/up/) → 에이전트가 잠시 보관 → 여기서 가져감 (게임 중에도 계속 받음)
 //  - 사진은 이 PC 브라우저에만 보관 (photos.js)
 //
 //  카메라 없이 시험: ?sim=1&autothrow=1 (가상 플레이어가 계속 던짐), 게임 중 Space 키 = 가운데로 한 번 던지기
@@ -117,9 +117,9 @@ function toast(text) {
 
 async function setupQr() {
   try {
-    const info = await (await fetch('/api/up/info')).json();
+    const info = await (await fetch('/api/smash/up/info')).json();
     if (!info.url) return;
-    const src = '/api/up/qr.svg?' + Date.now();
+    const src = '/api/smash/up/qr.svg?' + Date.now();
     $('qrImg').src = src; $('qrMiniImg').src = src;
     $('qrUrl').textContent = info.url.replace(/\?.*$/, '');
     qrReady = true;
@@ -134,14 +134,14 @@ async function pollInbox() {
   if (inboxBusy || !qrReady) return;
   inboxBusy = true;
   try {
-    const list = await (await fetch('/api/up/list', { cache: 'no-store' })).json();
+    const list = await (await fetch('/api/smash/up/list', { cache: 'no-store' })).json();
     const added = [], errs = [];
     for (const it of list) {
       try {
-        const blob = await (await fetch(`/api/up/${it.seq}`, { cache: 'no-store' })).blob();
+        const blob = await (await fetch(`/api/smash/up/${it.seq}`, { cache: 'no-store' })).blob();
         added.push(await addImageFile(blob, it.name || '휴대폰 사진', it.from || ''));
       } catch (e) { errs.push(`${it.name}: ${e.message}`); }
-      fetch(`/api/up/${it.seq}`, { method: 'DELETE' }).catch(() => {});   // 성공·실패 모두 지움 (같은 사진이 계속 들어오지 않게)
+      fetch(`/api/smash/up/${it.seq}`, { method: 'DELETE' }).catch(() => {});   // 성공·실패 모두 지움 (같은 사진이 계속 들어오지 않게)
     }
     if (added.length) {
       const who = [...new Set(added.map(p => p.from).filter(Boolean))];

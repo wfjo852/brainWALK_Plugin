@@ -15,15 +15,28 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 웹 화면 파일을 실행 폴더에 복사 (exe만 실행해도 웹이 뜨도록) -->
+    <!-- 뷰어 웹 화면을 실행 폴더에 복사 (exe만 실행해도 웹이 뜨도록) -->
     <Content Update="wwwroot\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!--
+    게임 (../games) — 에이전트와 따로 관리·배포
+    - 게임별 서버 기능: games\<게임>\server\*.cs 를 함께 컴파일 (IGameModule, GameModules.cs 참고)
+      그 게임만 쓰는 NuGet 패키지는 games\<게임>\server\*.props 에 (아래 Import)
+    - 웹 파일: 실행 폴더의 games\ 로 복사 (server 폴더 제외). 실행할 때는 원본 games 폴더가 있으면 그걸 씀
+  -->
+  <ItemGroup>
+    <Compile Include="..\games\*\server\**\*.cs" Link="Games\%(RecursiveDir)%(Filename)%(Extension)" />
+    <None Include="..\games\**" Exclude="..\games\*\server\**" Link="games\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- Microsoft.Azure.Kinect.Sensor 1.4.x 를 함께 가져옵니다 -->
     <PackageReference Include="Microsoft.Azure.Kinect.BodyTracking" Version="1.1.2" />
-    <PackageReference Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
+
+  <!-- 게임별 서버 기능이 쓰는 패키지 등: games\<게임>\server\*.props (예: 사진 깨기의 QR 패키지) -->
+  <Import Project="..\games\*\server\*.props" />
 
   <!--
     Orbbec K4A Wrapper 교체:

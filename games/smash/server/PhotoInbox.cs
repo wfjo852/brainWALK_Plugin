@@ -4,12 +4,12 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using QRCoder;
 
-namespace FemtoSkeletonAgent;
+namespace FemtoSkeletonAgent.Games.Smash;
 
 /// <summary>
 /// 휴대폰 사진 받기 (사진 깨기 게임용)
 ///
-///  - 게임 화면에 QR 코드 → 휴대폰으로 찍으면 http://(이 PC 주소):포트/up/?t=(토큰) 페이지가 열림
+///  - 게임 화면에 QR 코드 → 휴대폰으로 찍으면 http://(이 PC 주소):포트/games/smash/up/?t=(토큰) 페이지가 열림
 ///  - 휴대폰이 사진을 보내면 여기(메모리)에 잠시 보관 → 게임 화면이 가져가서 브라우저 저장소에 넣고 지움
 ///  - 토큰: 실행할 때마다 새로 만듦. QR을 본 사람만 올릴 수 있게
 ///  - 사진은 인터넷으로 나가지 않음 (같은 와이파이 안에서만)
@@ -98,7 +98,7 @@ public sealed class PhotoInbox
     public string? UploadUrl(int port)
     {
         var ip = LanAddress();
-        return ip == null ? null : $"http://{ip}:{port}/up/?t={Token}";
+        return ip == null ? null : $"http://{ip}:{port}{SmashModule.PhonePage}?t={Token}";
     }
 
     public static string QrSvg(string text)

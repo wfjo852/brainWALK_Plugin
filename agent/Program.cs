@@ -13,7 +13,8 @@ using FemtoSkeletonAgent;
 //    --no-browser      시작 시 브라우저 자동 실행 안 함
 //    --viewer          게임 선택 화면 대신 뷰어(스켈레톤 화면)로 시작
 //    --window          전체 화면이 아니라 창으로 열기
-//    --no-lan          휴대폰 사진 올리기(QR) 끄기 → 이 PC에서만 접속
+//    --no-lan          다른 기기 접속 끄기 (휴대폰 사진 올리기 등) → 이 PC에서만 접속
+//    --games <폴더>    게임 폴더 위치 지정 (기본: 원본 games 폴더, 없으면 실행 폴더의 games)
 // ─────────────────────────────────────────────────────────────
 
 var options = AgentOptions.Parse(args);
@@ -21,9 +22,14 @@ var options = AgentOptions.Parse(args);
 var registry = new PersonRegistry(PersonRegistry.DefaultPath(options.Demo));
 var hub = new SkeletonHub(registry);
 
-// 웹 화면 파일은 원본 폴더(agent\wwwroot)를 바로 사용합니다.
-// → index.html 등을 고치면 다시 빌드할 필요 없이 열린 브라우저가 자동으로 새로고침됩니다.
+// 웹 화면 파일은 원본 폴더를 바로 사용합니다.
+//   agent\wwwroot → /        뷰어 (스켈레톤 화면)
+//   games\        → /games/  게임 (에이전트와 따로 배포: 이 폴더만 바꾸면 됨)
+// → 고치면 다시 빌드할 필요 없이 열린 브라우저가 자동으로 새로고침됩니다.
 var webRoot = WebRootLocator.Find();
+var gamesRoot = options.GamesDir != null ? Path.GetFullPath(options.GamesDir) : WebRootLocator.FindGames();
+var gameCtx = new GameContext(options.Port, options.Lan, gamesRoot);
+var gameModules = GameModules.Discover();   // games\<게임>\server\*.cs 에 있는 게임별 서버 기능
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -32,41 +38,46 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     WebRootPath = webRoot,
 });
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
-// 같은 와이파이의 휴대폰이 사진을 올릴 수 있게 모든 네트워크에서 받음.
-// 단, 다른 기기는 "사진 올리기" 페이지(/up/)와 올리기(POST /api/up)만 쓸 수 있음 (아래 문지기)
-// --no-lan 이면 예전처럼 이 PC에서만 접속
+// 같은 와이파이의 휴대폰 등이 접속할 수 있게 모든 네트워크에서 받음.
+// 단, 다른 기기는 게임 모듈이 허용한 주소만 쓸 수 있음 (아래 문지기). --no-lan 이면 이 PC에서만 접속
 builder.WebHost.UseUrls(options.Lan ? $"http://*:{options.Port}" : $"http://localhost:{options.Port}");
 builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 40 * 1024 * 1024);
 
-var inbox = new PhotoInbox();
 var app = builder.Build();
 
-// 문지기: 이 PC가 아닌 곳(휴대폰)에서 온 요청은 사진 올리기만 허용
+// 문지기: 이 PC가 아닌 곳(휴대폰)에서 온 요청은 게임 모듈이 허용한 주소만
+var remoteRules = gameModules.SelectMany(m => m.RemoteAccess).ToList();
 app.Use(async (ctx, next) =>
 {
     var ip = ctx.Connection.RemoteIpAddress;
     if (ip == null || System.Net.IPAddress.IsLoopback(ip)) { await next(); return; }
     var path = ctx.Request.Path.Value ?? "";
-    var allowed = (HttpMethods.IsGet(ctx.Request.Method) && (path == "/up" || path.StartsWith("/up/")))
-               || (HttpMethods.IsPost(ctx.Request.Method) && path == "/api/up");
-    if (!allowed) { ctx.Response.StatusCode = 404; return; }
+    if (!remoteRules.Any(r => r.Matches(ctx.Request.Method, path))) { ctx.Response.StatusCode = 404; return; }
     await next();
 });
 
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15) });
-app.UseDefaultFiles();
-app.UseStaticFiles(new StaticFileOptions
+// 브라우저가 옛 파일을 들고 있지 않도록 항상 새로 확인
+static void NoCache(Microsoft.AspNetCore.StaticFiles.StaticFileResponseContext c) => c.Context.Response.Headers.CacheControl = "no-cache";
+// 게임: /games/ ← games 폴더
+if (Directory.Exists(gamesRoot))
 {
-    // 브라우저가 옛 파일을 들고 있지 않도록 항상 새로 확인
-    OnPrepareResponse = c => c.Context.Response.Headers.CacheControl = "no-cache",
-});
+    var gamesFiles = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(gamesRoot);
+    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = gamesFiles, RequestPath = "/games" });
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = gamesFiles, RequestPath = "/games", OnPrepareResponse = NoCache });
+}
+// 뷰어: / ← agent\wwwroot
+app.UseDefaultFiles();
+app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = NoCache });
 
 // 웹 화면 파일이 바뀌면 열린 브라우저에 "새로고침" 신호
-using var webWatcher = WebRootLocator.Watch(webRoot, () =>
+void Reload()
 {
     Console.WriteLine("  웹 화면 파일 변경 감지 → 브라우저 새로고침");
     hub.PublishReload();
-});
+}
+using var webWatcher = WebRootLocator.Watch(webRoot, Reload);
+using var gamesWatcher = Directory.Exists(gamesRoot) ? WebRootLocator.Watch(gamesRoot, Reload) : null;
 
 app.Map("/ws", async (HttpContext ctx) =>
 {
@@ -90,48 +101,9 @@ app.MapGet("/tts", async (string? text, int? rate) =>
     return wav == null ? Results.StatusCode(503) : Results.File(wav, "audio/wav");
 });
 
-// ───────── 휴대폰 사진 받기 (사진 깨기) ─────────
-// 게임 화면용 (이 PC에서만): QR 주소, QR 그림, 도착한 사진 목록/가져가기/지우기
-app.MapGet("/api/up/info", () =>
-{
-    var url = options.Lan ? inbox.UploadUrl(options.Port) : null;
-    return Results.Json(new { url, lan = options.Lan });
-});
-app.MapGet("/api/up/qr.svg", () =>
-{
-    var url = options.Lan ? inbox.UploadUrl(options.Port) : null;
-    return url == null ? Results.NotFound() : Results.Text(PhotoInbox.QrSvg(url), "image/svg+xml");
-});
-app.MapGet("/api/up/list", () => Results.Json(inbox.List()));
-app.MapGet("/api/up/{seq:int}", (int seq, HttpContext ctx) =>
-{
-    var item = inbox.Get(seq);
-    if (item == null) return Results.NotFound();
-    ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
-    return Results.File(item.Data, item.ContentType);
-});
-app.MapDelete("/api/up/{seq:int}", (int seq) => { inbox.Remove(seq); return Results.Ok(); });
-
-// 휴대폰에서 올리기 (토큰 필요). multipart: file(여러 개), from(이름, 선택)
-app.MapPost("/api/up", async (HttpContext ctx) =>
-{
-    if (!inbox.CheckToken(ctx.Request.Query["t"])) return Results.Json(new { ok = false, error = "QR 코드를 다시 찍어 주세요" }, statusCode: 403);
-    if (!ctx.Request.HasFormContentType) return Results.Json(new { ok = false, error = "사진이 없어요" }, statusCode: 400);
-    var form = await ctx.Request.ReadFormAsync(ctx.RequestAborted);
-    var from = form["from"].ToString();
-    int ok = 0;
-    var errors = new List<string>();
-    foreach (var f in form.Files)
-    {
-        if (f.Length > PhotoInbox.MaxFileBytes) { errors.Add($"{f.FileName}: 사진이 너무 커요 (15MB까지)"); continue; }
-        using var ms = new MemoryStream();
-        await f.CopyToAsync(ms, ctx.RequestAborted);
-        var err = inbox.Add(Path.GetFileNameWithoutExtension(f.FileName), from, f.ContentType, ms.ToArray());
-        if (err == null) ok++; else errors.Add($"{f.FileName}: {err}");
-    }
-    if (ok > 0) Console.WriteLine($"  휴대폰 사진 {ok}장 도착{(string.IsNullOrWhiteSpace(from) ? "" : $" ({from})")}");
-    return Results.Json(new { ok = ok > 0, count = ok, errors }, statusCode: ok > 0 ? 200 : 400);
-});
+// 게임별 서버 기능: /api/<게임>/...
+foreach (var m in gameModules)
+    m.Map(app.MapGroup($"/api/{m.Name}"), gameCtx);
 
 // 스켈레톤 소스 시작 (별도 스레드)
 using var cts = new CancellationTokenSource();
@@ -149,9 +121,12 @@ app.Lifetime.ApplicationStarted.Register(() =>
     Console.WriteLine($"  모드    : {(options.Demo ? "데모 (가짜 스켈레톤)" : $"카메라 (처리: {options.ProcessingModeName})")}");
     Console.WriteLine($"  웹 주소 : {url}");
     Console.WriteLine($"  WS 주소 : ws://localhost:{options.Port}/ws");
-    Console.WriteLine($"  웹 파일 : {webRoot}");
-    if (options.Lan)
-        Console.WriteLine($"  사진받기: {inbox.UploadUrl(options.Port) ?? "(네트워크 주소를 찾지 못함 - 와이파이/랜 연결 확인)"}");
+    Console.WriteLine($"  뷰어 파일: {webRoot}");
+    Console.WriteLine($"  게임 파일: {(Directory.Exists(gamesRoot) ? gamesRoot : gamesRoot + "  (없음! 게임 화면이 열리지 않습니다)")}");
+    if (gameModules.Count > 0)
+        Console.WriteLine($"  게임 서버: {string.Join(", ", gameModules.Select(m => m.Name))}");
+    foreach (var m in gameModules)
+        if (m.StartupInfo(gameCtx) is { } line) Console.WriteLine($"  [{m.Name}] {line}");
     Console.WriteLine("  종료    : Ctrl+C");
     Console.WriteLine();
     if (options.OpenBrowser)
@@ -173,6 +148,7 @@ namespace FemtoSkeletonAgent
         public bool StartViewer { get; private set; }
         public bool Windowed { get; private set; }
         public bool Lan { get; private set; } = true;
+        public string? GamesDir { get; private set; }
         public string ProcessingModeName { get; private set; } = "gpu";
 
         // gpu: Windows에서는 SDK가 DirectML(대부분의 GPU에서 동작, CUDA 설치 불필요)을 자동 선택
@@ -195,6 +171,7 @@ namespace FemtoSkeletonAgent
                     case "--viewer": o.StartViewer = true; break;
                     case "--window": o.Windowed = true; break;
                     case "--no-lan": o.Lan = false; break;
+                    case "--games" when i + 1 < args.Length: o.GamesDir = args[++i]; break;
                     case "--port" when i + 1 < args.Length && int.TryParse(args[i + 1], out var p): o.Port = p; i++; break;
                     case "--mode" when i + 1 < args.Length: o.ProcessingModeName = args[++i].ToLowerInvariant(); break;
                 }

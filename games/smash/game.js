@@ -5,7 +5,9 @@
 //  - 던지기: 손을 뒤로 뺐다가 카메라 쪽으로 휙 (_shared/throw.js). 오른쪽에서 던지면 사진 오른쪽에 맞음
 //  - 던지는 것(공·토마토·달걀)은 던질 때마다 무작위
 //  - 여러 명이 함께 던져도 됨 (보이는 사람 모두). 던진 물건·맞은 자리는 그 사람 색(P1 빨강, P2 파랑 …)
-//  - 화면에는 사람 모습 없이 사진만 (사진판이 화면 전체), 위에는 대기 중인 사진 줄
+//  - 캐릭터 타입: 그림자뷰 (GAME_RULEBOOK.md) — 사진 위에 사람이 번진 그림자로 겹쳐 보임 (영상은 안 보임)
+//    그리는 순서: 사진판 → 사람 그림자 → 날아가는 것·조각·"쾅!" (그림자가 효과를 가리지 않게)
+//  - 사진판이 화면 전체, 위에는 대기 중인 사진 줄
 //  - 휴대폰 사진: QR 코드로 up/ 페이지 (games/smash/up/) → 에이전트가 잠시 보관 → 여기서 가져감 (게임 중에도 계속 받음)
 //  - 사진은 이 PC 브라우저에만 보관 (photos.js)
 //
@@ -15,6 +17,7 @@ import { FemtoClient, J } from '../_shared/femto-client.js';
 import { Sound } from '../_shared/sound.js';
 import { HandPointer } from '../_shared/hand-pointer.js';
 import { ThrowDetector } from '../_shared/throw.js';
+import { Stage } from '../_shared/video-layer.js';
 import { PLAYER_COLORS } from '../_shared/players.js';
 import { PhotoBoard } from './board.js';
 import { listPhotos, addImageFile, addText, removePhoto, ensureDefaults, loadImage } from './photos.js';
@@ -30,7 +33,8 @@ const OBJECTS = {
   egg: { icon: '🥚', name: '달걀', words: ['퍽!', '철썩!'] },
 };
 
-const client = new FemtoClient({ sim: SIM, video: false });   // 사람 영상은 필요 없음 (사진만 보여 줌)
+const client = new FemtoClient({ sim: SIM });   // 그림자뷰: 영상은 안 보이지만 사람 모양(마스크)이 영상과 함께 옴
+const people = new Stage($('people'), client, { character: 'shadow' });
 const sound = new Sound();
 const det = new ThrowDetector({ gentle: true, mirror: true });
 const pointer = new HandPointer({ client, onSelect: () => sound.success() });
@@ -511,6 +515,11 @@ function draw(now) {
 
   // 사진판
   c.drawImage(board.canvas, b.x + sx, b.y + sy, b.w, b.h);
+
+  // 사람 그림자 (그림자뷰): 사진 위, 효과 아래. 글로우 색 = 그 사람 색 (던진 물건·고리와 같은 색)
+  const players = [...client.bodies.values()].map(body => ({ present: true, bodyId: body.id, color: bodyInfo(body).color }));
+  people.draw({ players, mirror: true, background: null });
+  c.drawImage(people.canvas, 0, 0, L.W, L.H);
 
   // 떨어지는 조각
   for (const f of frags) {

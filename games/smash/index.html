@@ -55,6 +55,8 @@
 
   /* 무대: 사진판(fx) */
   #fx { position: fixed; left: 0; right: 0; bottom: 0; top: calc(var(--head) + var(--qbar)); width: 100%; height: calc(100vh - var(--head) - var(--qbar)); pointer-events: none; z-index: 5; }
+  /* 사람 그림자 (그림자뷰): 여기 그린 걸 fx 의 사진판 바로 위에 겹쳐 그림 → 이 캔버스 자체는 안 보이게 */
+  #people { position: fixed; left: 0; right: 0; bottom: 0; top: calc(var(--head) + var(--qbar)); width: 100%; height: calc(100vh - var(--head) - var(--qbar)); visibility: hidden; pointer-events: none; }
 
   .big { display: flex; gap: 14px; flex-wrap: wrap; }
   .big button { min-width: 96px; padding: 12px 22px; border-radius: 18px; border: 3px solid rgba(255,255,255,.16); background: rgba(255,255,255,.07);
@@ -121,6 +123,7 @@
 </head>
 <body>
 <canvas id="fx"></canvas>
+<canvas id="people"></canvas>
 
 <!-- 위: 안내 띠 -->
 <header id="headband">

@@ -1,10 +1,12 @@
 // ─────────────────────────────────────────────────────────────
 //  사진 깨기
 //
-//  흐름: 설정(사진·던질 것 고르기, 손으로도 고름) → 던지기(사진이 조금씩 깨짐) → 다 깨면 결과
+//  흐름: 설정(깰 사진들 고르기, 손으로도 고름) → 던지기(사진이 조금씩 깨짐) → 한 장 다 깨면 다음 사진 → 모두 깨면 결과
 //  - 던지기: 손을 뒤로 뺐다가 카메라 쪽으로 휙 (_shared/throw.js). 오른쪽에서 던지면 사진 오른쪽에 맞음
+//  - 던지는 것(공·토마토·달걀)은 던질 때마다 무작위
 //  - 여러 명이 함께 던져도 됨 (보이는 사람 모두). 던진 물건·맞은 자리는 그 사람 색(P1 빨강, P2 파랑 …)
-//  - 화면에는 사람 모습 없이 사진만 (사진판이 화면 전체)
+//  - 화면에는 사람 모습 없이 사진만 (사진판이 화면 전체), 위에는 대기 중인 사진 줄
+//  - 휴대폰 사진: QR 코드로 /up/ 페이지 → 에이전트가 잠시 보관 → 여기서 가져감 (게임 중에도 계속 받음)
 //  - 사진은 이 PC 브라우저에만 보관 (photos.js)
 //
 //  카메라 없이 시험: ?sim=1&autothrow=1 (가상 플레이어가 계속 던짐), 게임 중 Space 키 = 가운데로 한 번 던지기
@@ -34,8 +36,10 @@ const det = new ThrowDetector({ gentle: true, mirror: true });
 const pointer = new HandPointer({ client, onSelect: () => sound.success() });
 
 // ───────── 설정 저장 ─────────
-const opts = { obj: 'ball', power: 'gentle', photoId: null };
+// skip: 게임에서 뺀 사진 id (나머지는 모두 순서대로 나옴)
+const opts = { power: 'gentle', skip: [] };
 try { Object.assign(opts, JSON.parse(localStorage.getItem('femto.smash.opts') || '{}')); } catch {}
+if (!Array.isArray(opts.skip)) opts.skip = [];
 const saveOpts = () => { try { localStorage.setItem('femto.smash.opts', JSON.stringify(opts)); } catch {} };
 
 function bindChoice(id, key) {
@@ -48,31 +52,36 @@ function bindChoice(id, key) {
   });
   render();
 }
-bindChoice('optObj', 'obj');
 bindChoice('optPower', 'power');
 
-// ───────── 사진 고르기 ─────────
+// ───────── 사진 고르기 (여러 장, 번호 순서대로 나옴) ─────────
 let photos = [];
-async function refreshGallery() {
+const included = () => photos.filter(p => !opts.skip.includes(p.id));
+async function refreshGallery(newIds = []) {
   photos = await listPhotos();
-  if (!photos.some(p => p.id === opts.photoId)) opts.photoId = photos[0]?.id ?? null;
+  opts.skip = opts.skip.filter(id => photos.some(p => p.id === id));   // 지운 사진 정리
   const g = $('gallery');
   g.querySelectorAll('.ph').forEach(e => e.remove());
+  let no = 0;
   for (const p of photos) {
+    const on = !opts.skip.includes(p.id);
     const b = document.createElement('div');
-    b.className = 'ph hand-target' + (p.id === opts.photoId ? ' on' : '');
+    b.className = 'ph hand-target' + (on ? ' on' : '') + (newIds.includes(p.id) ? ' new' : '');
     b.style.backgroundImage = `url(${p.thumb})`;
-    b.title = p.name;
+    b.title = p.name + (on ? '' : ' (빠짐 · 누르면 넣기)');
     b.tabIndex = 0;
-    b.innerHTML = '<button class="del" title="이 사진 지우기">✕</button>';
+    b.innerHTML = `<span class="no">${on ? ++no : ''}</span><button class="del" title="이 사진 지우기">✕</button>`
+      + (p.from ? `<span class="cap">📱 ${esc(p.from)}</span>` : '');
     b.onclick = e => {
-      if (e.target.classList.contains('del')) { removePhoto(p.id).then(refreshGallery); return; }
-      opts.photoId = p.id; saveOpts();
-      g.querySelectorAll('.ph').forEach(x => x.classList.toggle('on', x === b));
+      if (e.target.classList.contains('del')) { removePhoto(p.id).then(() => refreshGallery()); return; }
+      opts.skip = on ? [...opts.skip, p.id] : opts.skip.filter(id => id !== p.id);
+      saveOpts(); refreshGallery();
     };
     g.appendChild(b);
   }
-  $('start').disabled = !opts.photoId;
+  const n = included().length;
+  $('start').disabled = !n;
+  $('start').textContent = n > 1 ? `시작하기 ▶ (사진 ${n}장)` : '시작하기 ▶';
   saveOpts();
 }
 
@@ -80,12 +89,71 @@ function showErr(msg) { $('err').textContent = msg || ''; }
 
 async function addFiles(files) {
   showErr('');
-  let last = null;
+  const added = [];
   for (const f of files) {
-    try { last = await addImageFile(f); } catch (e) { showErr(`${f.name}: ${e.message}`); }
+    try { added.push(await addImageFile(f)); } catch (e) { showErr(`${f.name}: ${e.message}`); }
   }
-  if (last) { opts.photoId = last.id; await refreshGallery(); sound.success(); }
+  if (added.length) await photosArrived(added);
 }
+
+/** 새 사진이 들어옴 (이 PC에서 올리거나 휴대폰에서 옴) → 목록 갱신, 게임 중이면 대기 줄 뒤에 붙임 */
+async function photosArrived(added) {
+  await refreshGallery(added.map(p => p.id));
+  sound.success();
+  if (game && phase === 'play') {
+    for (const p of added) if (!game.queue.some(q => q.id === p.id)) { game.queue.push(p); game.fresh.add(p.id); }
+    renderQueue();
+  }
+}
+
+// ───────── 휴대폰 사진 받기 (QR) ─────────
+let toastTimer = 0;
+function toast(text) {
+  $('toast').textContent = text;
+  $('toast').classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $('toast').classList.add('hidden'), 3500);
+}
+
+async function setupQr() {
+  try {
+    const info = await (await fetch('/api/up/info')).json();
+    if (!info.url) return;
+    const src = '/api/up/qr.svg?' + Date.now();
+    $('qrImg').src = src; $('qrMiniImg').src = src;
+    $('qrUrl').textContent = info.url.replace(/\?.*$/, '');
+    qrReady = true;
+    show('qrBox', true);
+    show('qrMini', phase !== 'setup');
+  } catch { /* 에이전트 없이 연 경우: QR 없음 */ }
+}
+let qrReady = false;
+
+let inboxBusy = false;
+async function pollInbox() {
+  if (inboxBusy || !qrReady) return;
+  inboxBusy = true;
+  try {
+    const list = await (await fetch('/api/up/list', { cache: 'no-store' })).json();
+    const added = [], errs = [];
+    for (const it of list) {
+      try {
+        const blob = await (await fetch(`/api/up/${it.seq}`, { cache: 'no-store' })).blob();
+        added.push(await addImageFile(blob, it.name || '휴대폰 사진', it.from || ''));
+      } catch (e) { errs.push(`${it.name}: ${e.message}`); }
+      fetch(`/api/up/${it.seq}`, { method: 'DELETE' }).catch(() => {});   // 성공·실패 모두 지움 (같은 사진이 계속 들어오지 않게)
+    }
+    if (added.length) {
+      const who = [...new Set(added.map(p => p.from).filter(Boolean))];
+      toast(`📱 ${who.length ? who.join(', ') + '님 ' : ''}사진 ${added.length}장이 왔어요!`);
+      await photosArrived(added);
+    }
+    if (errs.length && phase === 'setup') showErr(errs.join(' / '));
+  } catch { /* 잠깐 끊김: 다음에 다시 */ }
+  inboxBusy = false;
+}
+setupQr();
+setInterval(pollInbox, 1500);
 
 $('upload').onclick = () => $('file').click();
 $('file').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
@@ -94,7 +162,7 @@ const makeText = async () => {
   try {
     const p = await addText($('textIn').value);
     $('textIn').value = ''; $('textRow').classList.add('hidden');
-    opts.photoId = p.id; await refreshGallery(); sound.success();
+    await refreshGallery([p.id]); sound.success();
   } catch (e) { showErr(e.message); }
 };
 $('textMake').onclick = makeText;
@@ -111,7 +179,7 @@ addEventListener('paste', e => {
   const files = [...e.clipboardData.files].filter(f => f.type.startsWith('image/'));
   if (files.length) addFiles(files);
 });
-ensureDefaults().then(refreshGallery);
+ensureDefaults().then(() => refreshGallery());
 
 // ───────── 상태 ─────────
 let phase = 'setup';    // setup | play | done | results
@@ -131,12 +199,15 @@ function setPhase(p) {
   show('results', p === 'results');
   show('stop', p === 'play' || p === 'done');
   show('cardsL', p !== 'setup'); show('cardsR', p !== 'setup');
+  show('queueBar', p === 'play' || p === 'done');
+  show('qrMini', qrReady && p !== 'setup');   // 게임 중에도 QR로 사진 계속 받기
+  if (p === 'setup') refreshGallery();
   pointer.enabled = p === 'setup' || p === 'results';
   if (!pointer.enabled) pointer.hide();
 }
 
 $('start').onclick = startGame;
-$('again').onclick = () => startGame(true);
+$('again').onclick = () => startGame();
 $('toSetup').onclick = () => { sound.stop(); setPhase('setup'); };
 $('toGames').onclick = () => setTimeout(() => (location.href = '../' + (SIM ? `?sim=${SIM}` : '')), 500);
 $('stop').onclick = () => { sound.stop(); setPhase('setup'); };
@@ -145,22 +216,57 @@ addEventListener('keydown', e => {
   if (e.code === 'Space' && phase === 'play') { e.preventDefault(); testThrow(); }
 });
 
-async function startGame(same = false) {
-  const p = photos.find(x => x.id === opts.photoId);
-  if (!p) { showErr('사진을 먼저 골라 주세요'); return; }
+/** 시작: 고른 사진을 번호 순서대로 한 장씩. 게임 중 휴대폰으로 온 사진은 줄 뒤에 붙음 */
+async function startGame() {
+  await refreshGallery();
+  const list = included();
+  if (!list.length) { showErr('사진을 먼저 골라 주세요'); return; }
   sound.unlock();
-  try { if (!same || !boardImg) boardImg = await loadImage(p.data); }
-  catch (e) { showErr(e.message); return; }
-  board = new PhotoBoard(boardImg);
   det.setGentle(opts.power === 'gentle');
-  projectiles.length = frags.length = particles.length = pops.length = rings.length = 0;
   stats.clear();
   const now = performance.now() / 1000;
-  game = { t0: now, throws: 0, best: 0, lastThrow: now, lastHint: now, said: new Set(), finishedAt: 0 };
+  game = { t0: now, throws: 0, best: 0, lastThrow: now, lastHint: now, said: new Set(), finishedAt: 0,
+           queue: [...list], idx: -1, cleared: 0, nextAt: 0, fresh: new Set(), lastObj: null };
+  if (!await loadPhoto(0)) return;
   setPhase('play');
-  setMsg('팔을 뒤로 했다가 앞으로 휙! 💪', `사진을 향해 ${OBJECTS[opts.obj]?.name ?? '공'}을 던지듯이`);
-  updateMeter();
+  setMsg('팔을 뒤로 했다가 앞으로 휙! 💪', list.length > 1 ? '한 장 다 깨면 다음 사진이 나와요' :'사진을 향해 공을 던지듯이');
   sound.say('사진을 향해, 공을 던지듯이 팔을 앞으로 휙 던져 보세요', 0.92);
+}
+
+/** i번째 사진을 사진판에 올림 (못 여는 사진은 건너뜀) */
+async function loadPhoto(i) {
+  const g = game;
+  for (; i < g.queue.length; i++) {
+    try {
+      const img = await loadImage(g.queue[i].data);
+      if (game !== g) return false;   // 그사이 그만두거나 다시 시작
+      boardImg = img;
+      board = new PhotoBoard(boardImg);
+      g.idx = i; g.nextAt = 0; g.said.clear();
+      projectiles.length = frags.length = particles.length = pops.length = rings.length = 0;
+      updateMeter(); renderQueue();
+      return true;
+    } catch (e) { showErr(e.message); }
+  }
+  return false;
+}
+
+/** 게임 화면 위: 대기 중인 사진 (지금 사진 다음부터) */
+let queueKey = '';
+function renderQueue() {
+  if (!game) return;
+  const rest = game.queue.slice(game.idx + 1);
+  $('photoNo').textContent = `사진 ${game.idx + 1}/${game.queue.length}`;
+  $('queueCount').textContent = rest.length;
+  const key = rest.map(p => p.id).join(',');
+  if (key === queueKey) return;
+  queueKey = key;
+  const MAX = 12;
+  $('queueList').innerHTML = rest.length
+    ? rest.slice(0, MAX).map((p, k) => `<div class="q${game.fresh.has(p.id) ? ' new' : ''}" style="background-image:url(${p.thumb})"><i>${game.idx + 2 + k}</i>${p.from ? `<span>📱 ${esc(p.from)}</span>` : ''}</div>`).join('')
+      + (rest.length > MAX ? `<div class="more">+${rest.length - MAX}</div>` : '')
+    : `<div class="empty">${qrReady ? '대기 중인 사진이 없어요 · 오른쪽 위 QR로 휴대폰 사진을 보내면 여기에 줄을 서요 📱' : '이 사진이 마지막이에요'}</div>`;
+  game.fresh.clear();
 }
 
 function setMsg(msg, sub) {
@@ -219,7 +325,11 @@ function bodyInfo(body) {
 function launch({ body, handJoint, power, aim }) {
   if (!board || board.done) return;
   const now = performance.now() / 1000;
-  const objKey = opts.obj === 'mix' ? ['ball', 'tomato', 'egg'][Math.floor(Math.random() * 3)] : opts.obj;
+  // 던지는 것은 매번 무작위 (바로 전과 같은 게 연달아 나오지 않게)
+  const keys = Object.keys(OBJECTS).filter(k => k !== game.lastObj);
+  const objKey = keys[Math.floor(Math.random() * keys.length)];
+  game.lastObj = objKey;
+  if (SIM) (window.__objs ??= {})[objKey] = (window.__objs[objKey] || 0) + 1;
   const target = board.aimPoint(aim.nx, aim.ny);
   // 출발: 화면 아래 가장자리, 던진 사람이 서 있는 쪽 (거울처럼: 오른쪽에 선 사람 = 화면 오른쪽)
   let fx0 = 0.5;
@@ -275,7 +385,9 @@ function impact(p) {
 
 function finale() {
   if (phase !== 'play') return;
-  setPhase('done');
+  game.cleared++;
+  const more = game.idx + 1 < game.queue.length;
+  if (!more) setPhase('done');
   const center = toFx(board.W / 2, board.H / 2);
   for (const f of board.explodeAll()) {
     const c = toFx(f.cx, f.cy);
@@ -288,14 +400,33 @@ function finale() {
   shake = 0.5;
   sfx.shatter(24);
   setTimeout(() => sound.fanfare(), 250);
-  setMsg('🎉 다 깼어요!', '속이 시원하시죠?');
-  sound.say('와! 다 깼어요! 속이 시원하시죠?', 0.95);
+  if (more) {
+    // 다음 사진: 조각이 날아간 뒤 잠깐 쉬고 나옴
+    setMsg(`🎉 ${game.idx + 1}번째 사진 깼어요!`, '다음 사진이 나와요…');
+    sound.say('와! 깼어요! 다음 사진이에요', 0.95);
+    game.nextAt = performance.now() / 1000 + 2.6;
+    return;
+  }
+  setMsg(game.queue.length > 1 ? `🎉 ${game.queue.length}장 모두 깼어요!` : '🎉 다 깼어요!', '속이 시원하시죠?');
+  sound.say(game.queue.length > 1 ? '와! 사진을 모두 깼어요! 속이 시원하시죠?' : '와! 다 깼어요! 속이 시원하시죠?', 0.95);
   game.finishedAt = performance.now() / 1000;
+}
+
+async function nextPhoto() {
+  game.nextAt = 0;
+  if (!await loadPhoto(game.idx + 1)) {   // 남은 사진을 하나도 못 열면 끝
+    if (phase === 'play') { setPhase('done'); game.finishedAt = performance.now() / 1000; setMsg('🎉 다 깼어요!', '속이 시원하시죠?'); }
+    return;
+  }
+  setMsg(`📸 ${game.idx + 1}번째 사진!`, game.queue[game.idx].from ? `📱 ${game.queue[game.idx].from}님이 보낸 사진` : '팔을 뒤로 했다가 앞으로 휙!');
+  $('msg').classList.remove('pulse'); void $('msg').offsetWidth; $('msg').classList.add('pulse');
+  sound.say(`${game.idx + 1}번째 사진이에요`, 0.95);
 }
 
 function showResults() {
   setPhase('results');
   const sec = Math.round(game.finishedAt - game.t0);
+  $('rPhotos').textContent = game.cleared;
   $('rThrows').textContent = game.throws;
   $('rTime').textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
   $('rPower').textContent = Math.round(game.best * 100) + '%';
@@ -314,7 +445,8 @@ function frame(nowMs) {
   if (phase === 'play') {
     for (const t of det.update(client.bodies, now)) launch({ body: client.bodies.get(t.bodyId), ...t });
     const here = client.bodies.size > 0;
-    if (!here) setMsg('카메라 앞에 서 주세요 🙂', '사진이 기다리고 있어요');
+    if (game.nextAt) { if (now >= game.nextAt) nextPhoto(); }   // 다음 사진 기다리는 중
+    else if (!here) setMsg('카메라 앞에 서 주세요 🙂', '사진이 기다리고 있어요');
     else if (now - game.lastThrow > 9 && now - game.lastHint > 15) {
       game.lastHint = now;
       setMsg('팔을 뒤로 했다가 앞으로 휙! 💪', '살살 던져도 괜찮아요');
@@ -328,7 +460,7 @@ function frame(nowMs) {
   // 날아가는 것
   for (let i = projectiles.length - 1; i >= 0; i--) {
     const p = projectiles[i];
-    if (now - p.t0 >= p.dur) { projectiles.splice(i, 1); if (board && phase === 'play') impact(p); }
+    if (now - p.t0 >= p.dur) { projectiles.splice(i, 1); if (board && !board.done && phase === 'play') impact(p); }
   }
   step(dt);
   draw(now);
@@ -569,7 +701,8 @@ if (SIM) {
       client.sim.throwArm(i, { hand: Math.random() < 0.6 ? 'R' : 'L', aim: { dx: (Math.random() - 0.5) * 0.6, dy: Math.random() * 0.35 - 0.1 }, dur: 0.4 + Math.random() * 0.35 });
     }, 1400);
   }
-  window.__smash = () => ({ phase, throws: game?.throws ?? 0, remain: board?.remain ?? 1, flying: projectiles.length, frags: frags.length });
+  window.__smash = () => ({ phase, throws: game?.throws ?? 0, remain: board?.remain ?? 1, flying: projectiles.length, frags: frags.length,
+    photo: game ? game.idx + 1 : 0, total: game?.queue.length ?? 0, cleared: game?.cleared ?? 0, waiting: $('queueCount').textContent, objs: window.__objs });
   window.__smashStart = () => startGame();
 }
 setPhase('setup');

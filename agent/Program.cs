@@ -13,6 +13,7 @@ using FemtoSkeletonAgent;
 //    --no-browser      시작 시 브라우저 자동 실행 안 함
 //    --viewer          게임 선택 화면 대신 뷰어(스켈레톤 화면)로 시작
 //    --window          전체 화면이 아니라 창으로 열기
+//    --no-lan          휴대폰 사진 올리기(QR) 끄기 → 이 PC에서만 접속
 // ─────────────────────────────────────────────────────────────
 
 var options = AgentOptions.Parse(args);
@@ -31,10 +32,27 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     WebRootPath = webRoot,
 });
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
-// 1단계: 같은 PC에서만 접속 (localhost 전용)
-builder.WebHost.UseUrls($"http://localhost:{options.Port}");
+// 같은 와이파이의 휴대폰이 사진을 올릴 수 있게 모든 네트워크에서 받음.
+// 단, 다른 기기는 "사진 올리기" 페이지(/up/)와 올리기(POST /api/up)만 쓸 수 있음 (아래 문지기)
+// --no-lan 이면 예전처럼 이 PC에서만 접속
+builder.WebHost.UseUrls(options.Lan ? $"http://*:{options.Port}" : $"http://localhost:{options.Port}");
+builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 40 * 1024 * 1024);
 
+var inbox = new PhotoInbox();
 var app = builder.Build();
+
+// 문지기: 이 PC가 아닌 곳(휴대폰)에서 온 요청은 사진 올리기만 허용
+app.Use(async (ctx, next) =>
+{
+    var ip = ctx.Connection.RemoteIpAddress;
+    if (ip == null || System.Net.IPAddress.IsLoopback(ip)) { await next(); return; }
+    var path = ctx.Request.Path.Value ?? "";
+    var allowed = (HttpMethods.IsGet(ctx.Request.Method) && (path == "/up" || path.StartsWith("/up/")))
+               || (HttpMethods.IsPost(ctx.Request.Method) && path == "/api/up");
+    if (!allowed) { ctx.Response.StatusCode = 404; return; }
+    await next();
+});
+
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15) });
 app.UseDefaultFiles();
 app.UseStaticFiles(new StaticFileOptions
@@ -72,6 +90,49 @@ app.MapGet("/tts", async (string? text, int? rate) =>
     return wav == null ? Results.StatusCode(503) : Results.File(wav, "audio/wav");
 });
 
+// ───────── 휴대폰 사진 받기 (사진 깨기) ─────────
+// 게임 화면용 (이 PC에서만): QR 주소, QR 그림, 도착한 사진 목록/가져가기/지우기
+app.MapGet("/api/up/info", () =>
+{
+    var url = options.Lan ? inbox.UploadUrl(options.Port) : null;
+    return Results.Json(new { url, lan = options.Lan });
+});
+app.MapGet("/api/up/qr.svg", () =>
+{
+    var url = options.Lan ? inbox.UploadUrl(options.Port) : null;
+    return url == null ? Results.NotFound() : Results.Text(PhotoInbox.QrSvg(url), "image/svg+xml");
+});
+app.MapGet("/api/up/list", () => Results.Json(inbox.List()));
+app.MapGet("/api/up/{seq:int}", (int seq, HttpContext ctx) =>
+{
+    var item = inbox.Get(seq);
+    if (item == null) return Results.NotFound();
+    ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    return Results.File(item.Data, item.ContentType);
+});
+app.MapDelete("/api/up/{seq:int}", (int seq) => { inbox.Remove(seq); return Results.Ok(); });
+
+// 휴대폰에서 올리기 (토큰 필요). multipart: file(여러 개), from(이름, 선택)
+app.MapPost("/api/up", async (HttpContext ctx) =>
+{
+    if (!inbox.CheckToken(ctx.Request.Query["t"])) return Results.Json(new { ok = false, error = "QR 코드를 다시 찍어 주세요" }, statusCode: 403);
+    if (!ctx.Request.HasFormContentType) return Results.Json(new { ok = false, error = "사진이 없어요" }, statusCode: 400);
+    var form = await ctx.Request.ReadFormAsync(ctx.RequestAborted);
+    var from = form["from"].ToString();
+    int ok = 0;
+    var errors = new List<string>();
+    foreach (var f in form.Files)
+    {
+        if (f.Length > PhotoInbox.MaxFileBytes) { errors.Add($"{f.FileName}: 사진이 너무 커요 (15MB까지)"); continue; }
+        using var ms = new MemoryStream();
+        await f.CopyToAsync(ms, ctx.RequestAborted);
+        var err = inbox.Add(Path.GetFileNameWithoutExtension(f.FileName), from, f.ContentType, ms.ToArray());
+        if (err == null) ok++; else errors.Add($"{f.FileName}: {err}");
+    }
+    if (ok > 0) Console.WriteLine($"  휴대폰 사진 {ok}장 도착{(string.IsNullOrWhiteSpace(from) ? "" : $" ({from})")}");
+    return Results.Json(new { ok = ok > 0, count = ok, errors }, statusCode: ok > 0 ? 200 : 400);
+});
+
 // 스켈레톤 소스 시작 (별도 스레드)
 using var cts = new CancellationTokenSource();
 ISkeletonSource source = options.Demo
@@ -89,6 +150,8 @@ app.Lifetime.ApplicationStarted.Register(() =>
     Console.WriteLine($"  웹 주소 : {url}");
     Console.WriteLine($"  WS 주소 : ws://localhost:{options.Port}/ws");
     Console.WriteLine($"  웹 파일 : {webRoot}");
+    if (options.Lan)
+        Console.WriteLine($"  사진받기: {inbox.UploadUrl(options.Port) ?? "(네트워크 주소를 찾지 못함 - 와이파이/랜 연결 확인)"}");
     Console.WriteLine("  종료    : Ctrl+C");
     Console.WriteLine();
     if (options.OpenBrowser)
@@ -109,6 +172,7 @@ namespace FemtoSkeletonAgent
         public bool OpenBrowser { get; private set; } = true;
         public bool StartViewer { get; private set; }
         public bool Windowed { get; private set; }
+        public bool Lan { get; private set; } = true;
         public string ProcessingModeName { get; private set; } = "gpu";
 
         // gpu: Windows에서는 SDK가 DirectML(대부분의 GPU에서 동작, CUDA 설치 불필요)을 자동 선택
@@ -130,6 +194,7 @@ namespace FemtoSkeletonAgent
                     case "--no-browser": o.OpenBrowser = false; break;
                     case "--viewer": o.StartViewer = true; break;
                     case "--window": o.Windowed = true; break;
+                    case "--no-lan": o.Lan = false; break;
                     case "--port" when i + 1 < args.Length && int.TryParse(args[i + 1], out var p): o.Port = p; i++; break;
                     case "--mode" when i + 1 < args.Length: o.ProcessingModeName = args[++i].ToLowerInvariant(); break;
                 }

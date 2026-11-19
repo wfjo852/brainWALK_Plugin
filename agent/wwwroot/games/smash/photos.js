@@ -6,7 +6,7 @@
 //  - "글자로 만들기": "스트레스", "걱정" 같은 글자를 큰 그림으로 만들어 저장
 //  - 처음엔 글자 그림 3장을 넣어 둠
 // ─────────────────────────────────────────────────────────────
-const DB_NAME = 'femto-smash', STORE = 'photos', MAX_PHOTOS = 16;
+const DB_NAME = 'femto-smash', STORE = 'photos', MAX_PHOTOS = 40;
 let memory = null;   // 저장소를 못 쓸 때(드문 경우) 임시 보관
 
 function openDb() {
@@ -58,15 +58,18 @@ export async function removePhoto(id) {
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-/** 사진 파일 올리기 (jpg, png, heic는 브라우저가 읽을 수 있을 때만) */
-export async function addImageFile(file) {
+/** 사진 파일 올리기 (jpg, png, heic는 브라우저가 읽을 수 있을 때만)
+ *  file: File 또는 Blob, name: 이름(Blob일 때), from: 보낸 사람(휴대폰으로 올린 경우) */
+export async function addImageFile(file, name = file?.name ?? '사진', from = '') {
   if (!file?.type?.startsWith('image/')) throw new Error('사진 파일이 아니에요');
   let bmp;
-  try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
-  catch { bmp = await createImageBitmap(file); }
+  try {
+    try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+    catch { bmp = await createImageBitmap(file); }
+  } catch { throw new Error('이 형식의 사진은 열 수 없어요 (jpg·png로 보내 주세요)'); }
   const data = toJpeg(bmp, 1280, 0.88), thumb = toJpeg(bmp, 320, 0.8);
   bmp.close?.();
-  return put({ id: newId(), kind: 'photo', name: file.name.replace(/\.[^.]+$/, ''), data, thumb, created: Date.now() });
+  return put({ id: newId(), kind: 'photo', name: String(name).replace(/\.[^.]+$/, ''), from, data, thumb, created: Date.now() });
 }
 
 /** 글자로 그림 만들기 */

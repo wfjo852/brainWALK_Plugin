@@ -22,6 +22,7 @@
   <ItemGroup>
     <!-- Microsoft.Azure.Kinect.Sensor 1.4.x 를 함께 가져옵니다 -->
     <PackageReference Include="Microsoft.Azure.Kinect.BodyTracking" Version="1.1.2" />
+    <PackageReference Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
 
   <!--
@@ -49,8 +50,7 @@
     <ItemGroup>
       <BtRuntime Include="$(BtSdkBin)\k4abt.dll;$(BtSdkBin)\onnxruntime.dll;$(BtSdkBin)\directml.dll;$(BtSdkBin)\dnn_model_2_0_op11.onnx;$(BtSdkBin)\dnn_model_2_0_lite_op11.onnx" />
     </ItemGroup>
-    <Copy SourceFiles="%(BtRuntime.FullPath)" DestinationFolder="$(OutDir)"
-          Condition="Exists('%(BtRuntime.FullPath)') And !Exists('$(OutDir)%(BtRuntime.Filename)%(BtRuntime.Extension)')" />
+    <Copy SourceFiles="%(BtRuntime.FullPath)" DestinationFolder="$(OutDir)" Condition="Exists('%(BtRuntime.FullPath)') And !Exists('$(OutDir)%(BtRuntime.Filename)%(BtRuntime.Extension)')" />
   </Target>
 
   <Target Name="CopyOrbbecWrapperOnPublish" AfterTargets="Publish">

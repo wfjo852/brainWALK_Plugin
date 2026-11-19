@@ -21,6 +21,7 @@
 //                 함수 (ctx, W, H) => {} = 직접 그림 / 문자열 = 색
 //
 //  stage.toScreen(body, J.Head) → {x, y} 화면 좌표 (이름표·점수 띄울 때)
+//  stage.shoulderWidth(body) → 화면에 보이는 어깨 너비 (CSS 픽셀)
 //  stage.skeleton(body, color) → 뼈대만 따로 그리기 (draw 다음에 불러서 원하는 사람만)
 //
 //  영상이 없을 때(가상 플레이어 ?sim=): 거울뷰는 뼈대, 그림자뷰는 뼈대로 만든 그림자로 대신 보여 줌
@@ -31,6 +32,8 @@
 import { J, BONES, FACE } from './femto-client.js';
 
 const VIRTUAL_W = 1280, VIRTUAL_H = 720;   // 영상이 없을 때(가상 플레이어) 기준 크기
+const BLUE_FLAG = ['#2464ed', '#77b2ff'];
+const WHITE_FLAG = ['#dce7f5', '#ffffff'];
 
 // ───────── 캐릭터 타입 프리셋 ─────────
 export const CHARACTER_TYPES = {
@@ -84,6 +87,7 @@ export class Stage {
     this.ctx = canvas.getContext('2d');
     this.client = client;
     this.map = null;
+    this.shoulderSpans = new WeakMap();
     this.bodyColors = new Map();   // bodyId → 색 (플레이어가 아닌 사람)
     this.shadowOut = document.createElement('canvas');   // 번진 그림자 (마스크 해상도, 영상이 새로 올 때만 만듦)
     this.shadowOutCtx = this.shadowOut.getContext('2d');
@@ -125,6 +129,22 @@ export class Stage {
   toScreen(body, joint) {
     if (!body?.p2 || !this.map || body.p2[joint * 2] < 0) return null;
     return { x: this.sx(body.p2[joint * 2]) / this.map.dpr, y: this.sy(body.p2[joint * 2 + 1]) / this.map.dpr };
+  }
+
+  shoulderWidth(body) {
+    const m = this.map, p = body?.p2;
+    if (!body || !m) return 0;
+    const left = J.ShoulderLeft * 2, right = J.ShoulderRight * 2;
+    if (p && body.conf(J.ShoulderLeft) > 0 && body.conf(J.ShoulderRight) > 0) {
+      const points = [p[left], p[left + 1], p[right], p[right + 1]];
+      if (points.every(value => Number.isFinite(value) && value >= 0)) {
+        const span = Math.hypot(points[0] - points[2], points[1] - points[3]);
+        if (span > 1) this.shoulderSpans.set(body, span);
+      }
+    }
+    // 어깨가 잠깐 가려지면 마지막으로 확인한 영상 픽셀 너비를 쓴다.
+    const span = this.shoulderSpans.get(body) ?? (90 * m.vw / VIRTUAL_W);
+    return span * m.scale / m.dpr;
   }
 
   draw(opts = {}) {
@@ -377,36 +397,47 @@ export class Stage {
   flags(body) {
     const p = body.p2;
     if (!p) return;
-    this.flag(p, J.HandRight, J.WristRight, '#2f6bff');
-    this.flag(p, J.HandLeft, J.WristLeft, '#f4f6fa');
+    const size = this.shoulderWidth(body) * this.map.dpr * .8;
+    this.flag(p, J.HandRight, J.WristRight, size, BLUE_FLAG);
+    this.flag(p, J.HandLeft, J.WristLeft, size, WHITE_FLAG);
   }
 
-  flag(p, hand, wrist, color) {
+  flag(p, hand, wrist, size, [base, highlight]) {
     if (p[hand * 2] < 0 || p[wrist * 2] < 0) return;
     const c = this.ctx, m = this.map;
     const hx = this.sx(p[hand * 2]), hy = this.sy(p[hand * 2 + 1]);
     const wx = this.sx(p[wrist * 2]), wy = this.sy(p[wrist * 2 + 1]);
     let dx = hx - wx, dy = hy - wy;
-    const len = Math.hypot(dx, dy) || 1;
+    const len = Math.hypot(dx, dy);
+    if (!len || !size) return;
     dx /= len; dy /= len;
-    const pole = 80 * m.unit, fw = 46 * m.unit, fh = 34 * m.unit;
-    const tx = hx + dx * pole, ty = hy + dy * pole;     // 깃대 끝
-    c.strokeStyle = '#c9a66b';
-    c.lineWidth = 6 * m.unit;
-    c.beginPath(); c.moveTo(hx, hy); c.lineTo(tx, ty); c.stroke();
-    // 깃발: 깃대 끝에서 바깥쪽으로
-    // 깃발은 몸 바깥쪽으로 펼침
-    const nx = -dy, ny = dx, side = (nx * (hx - this.sx(p[J.SpineChest * 2])) >= 0) ? 1 : -1;
-    const ox = nx * fw * side, oy = ny * fw * side;
-    c.fillStyle = color;
-    c.strokeStyle = 'rgba(0,0,0,.35)';
-    c.lineWidth = 2 * m.dpr;
+    const chestX = p[J.SpineChest * 2] >= 0 ? this.sx(p[J.SpineChest * 2]) : m.W / 2;
+    const side = -dy * (hx - chestX) >= 0 ? 1 : -1;
+    const pole = size * 1.04, width = size * .78, height = size * .5;
+    const top = -pole, bottom = top + height;
+    c.save();
+    c.transform(-dy * side, dx * side, -dx, -dy, hx, hy);
+
+    // 깃대의 폭과 깃발 천의 면적도 같은 어깨 너비를 기준으로 한다.
+    c.lineCap = 'round';
+    c.strokeStyle = '#c1d1e4';
+    c.lineWidth = size * .065;
+    c.beginPath(); c.moveTo(0, 0); c.lineTo(0, top); c.stroke();
+    const fabric = c.createLinearGradient(0, 0, width, 0);
+    fabric.addColorStop(0, base);
+    fabric.addColorStop(.55, highlight);
+    fabric.addColorStop(1, base);
+    c.fillStyle = fabric;
+    c.strokeStyle = '#0b1b32b3';
+    c.lineWidth = size * .028;
+    c.lineJoin = 'round';
     c.beginPath();
-    c.moveTo(tx, ty);
-    c.lineTo(tx + ox, ty + oy);
-    c.lineTo(tx + ox - dx * fh, ty + oy - dy * fh);
-    c.lineTo(tx - dx * fh, ty - dy * fh);
+    c.moveTo(0, top);
+    c.bezierCurveTo(width * .4, top - height * .13, width * .63, top + height * .25, width, top + height * .08);
+    c.lineTo(width, bottom + height * .08);
+    c.bezierCurveTo(width * .63, bottom + height * .25, width * .4, bottom - height * .13, 0, bottom);
     c.closePath();
     c.fill(); c.stroke();
+    c.restore();
   }
 }

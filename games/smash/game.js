@@ -210,6 +210,7 @@ $('textRow').onsubmit = async e => {
 $('textIn').onkeydown = e => {
   if (e.key.startsWith('Arrow')) e.stopPropagation();
 };
+$('textIn').oninput = () => { $('textErr').textContent = ''; };
 // 끌어다 놓기·붙여넣기
 addEventListener('dragover', e => { if (phase !== 'setup') return; e.preventDefault(); $('dropHint').classList.remove('hidden'); });
 addEventListener('dragleave', e => { if (!e.relatedTarget) $('dropHint').classList.add('hidden'); });

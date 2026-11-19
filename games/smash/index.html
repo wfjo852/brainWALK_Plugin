@@ -197,6 +197,11 @@
           <button class="tile hand-target" id="addPhoto" type="button" aria-haspopup="dialog"><span aria-hidden="true">＋</span>사진 추가</button>
         </div>
         <div id="err" role="status"></div>
+        <label class="t" id="powerLabel">던지기</label>
+        <div class="big" id="optPower" role="group" aria-labelledby="powerLabel">
+          <button class="hand-target" data-v="gentle">살살<small>가볍게 던져도 돼요</small></button>
+          <button class="hand-target" data-v="strong">힘껏<small>세게 던져야 해요</small></button>
+        </div>
       </div>
       <aside id="qrBox" class="hidden">
         <h3>📱 휴대폰으로 사진 보내기</h3>
@@ -204,12 +209,6 @@
         <p>휴대폰 카메라로 찍으면<br>사진을 보낼 수 있어요.<br>여러 사람이 보내도 돼요!</p>
         <code id="qrUrl"></code>
       </aside>
-    </div>
-
-    <label class="t" id="powerLabel">던지기</label>
-    <div class="big" id="optPower" role="group" aria-labelledby="powerLabel">
-      <button class="hand-target" data-v="gentle">살살<small>가볍게 던져도 돼요</small></button>
-      <button class="hand-target" data-v="strong">힘껏<small>세게 던져야 해요</small></button>
     </div>
   </div>
   <div class="setup-footer">
@@ -231,7 +230,7 @@
   <form id="textRow" class="hidden">
     <label for="textIn">그림에 넣을 글자</label>
     <div class="text-input">
-      <input id="textIn" maxlength="20" placeholder="예: 스트레스, 걱정">
+      <input id="textIn" maxlength="20" placeholder="예: 스트레스, 걱정" aria-describedby="textErr">
       <button class="btn primary hand-target" id="textMake" type="submit">그림 추가</button>
     </div>
     <p id="textErr" role="status"></p>

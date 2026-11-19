@@ -90,7 +90,7 @@ import { Sound } from './_shared/sound.js';
 // ───── 게임 목록: 새 게임을 만들면 games/<폴더>/ 에 넣고 여기에 한 줄 추가 ─────
 const GAMES = [
   {
-    folder: 'flag', icon: '🚩', title: '청기백기',
+    folder: 'flag', title: '청기백기',
     desc: '"오른팔 올려!" 하면 오른팔을, "왼발 들어!" 하면 왼발을 들어요.',
     tags: ['1~4명', '팔·다리 운동', '집중력'],
     say: '청기백기',
@@ -109,7 +109,7 @@ const simQuery = SIM ? `?sim=${SIM}` : '';
 
 document.getElementById('cards').innerHTML = GAMES.map(g => `
   <a class="card hand-target" href="${g.folder}/${simQuery}" data-game="${g.folder}" data-say="${g.say}">
-    <div class="art" aria-hidden="true"><span>${g.icon}</span></div>
+    <div class="art" aria-hidden="true">${g.folder === 'flag' ? '<span class="flag-mark"></span>' : `<span>${g.icon}</span>`}</div>
     <div class="card-body">
       <div class="title">${g.title}<span class="arrow" aria-hidden="true">↗</span></div>
       <p class="desc">${g.desc}</p>

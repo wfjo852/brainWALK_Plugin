@@ -23,7 +23,7 @@ const MIRROR = true;
 
 const client = new FemtoClient({ sim: SIM });
 if (SIM && params.get('skill')) client.sim.setSkill(+params.get('skill'));   // 시험: 가상 플레이어 실력 (0~1)
-const shell = new GameShell({ name: '청기백기', icon: '🚩', sim: SIM, onHome: () => { sound.stop(); setPhase('setup'); } });   // 공통 틀: 헤더·푸터·인원·스켈레톤
+const shell = new GameShell({ name: '청기백기', sim: SIM, onHome: () => { sound.stop(); setPhase('setup'); } });   // 공통 틀: 헤더·푸터·인원·스켈레톤
 const stage = new Stage($('stage'), client, { character: 'mirror' });   // 캐릭터 타입: 거울뷰 (GAME_RULEBOOK.md)
 const sound = new Sound();
 const pointer = new HandPointer({ client, mirror: MIRROR, onSelect: () => sound.tick() });
@@ -489,7 +489,8 @@ function buildTags() {
   tagEls = players.map(p => {
     const el = document.createElement('div');
     el.className = 'tag';
-    el.innerHTML = `<div class="res"></div><div class="name" style="background:${p.color}"></div>`;
+    el.style.setProperty('--c', p.color);
+    el.innerHTML = '<div class="res"></div><div class="name"></div>';
     $('tags').appendChild(el);
     return el;
   });
@@ -503,8 +504,10 @@ function drawTags(t) {
     const pos = p.body && stage.toScreen(p.body, J.Head);
     el.style.display = pos ? '' : 'none';
     if (!pos) return;
-    el.style.left = pos.x + 'px';
-    el.style.top = Math.max(46, pos.y - 60 * (stage.map.unit / stage.map.dpr) - 10) + 'px';   // 무대 위쪽에서 잘리지 않게
+    const shoulder = stage.shoulderWidth(p.body);
+    el.style.setProperty('--shoulder-width', shoulder + 'px');
+    el.style.setProperty('--tag-x', pos.x + 'px');
+    el.style.setProperty('--tag-y', (pos.y - shoulder * .7) + 'px');
     const name = el.querySelector('.name');
     if (name.textContent !== p.name) name.textContent = p.name;
     const res = el.querySelector('.res');

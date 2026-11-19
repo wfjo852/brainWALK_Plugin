@@ -39,11 +39,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* ───── 손으로 고르기 ───── */
 .hand-cursor { position: fixed; left: 0; top: 0; width: 104px; height: 104px; margin: -52px 0 0 -52px; pointer-events: none; z-index: 100; will-change: transform; }
-.hand-cursor svg { position: absolute; inset: 0; transform: rotate(-90deg); }
-.hand-cursor .track { fill: rgba(10, 14, 20, .45); stroke: rgba(255,255,255,.55); stroke-width: 8; }
-.hand-cursor .fill { fill: none; stroke: var(--ok); stroke-width: 10; stroke-linecap: round; stroke-dasharray: 276.5; stroke-dashoffset: 276.5; }
+.hand-cursor svg { position: absolute; inset: 0; transform: rotate(-90deg); overflow: visible; }
+/* 손 커서: 배경 · 테두리 · 테두리 인디케이터 · 손 모양 (hand-pointer.js) */
+.hand-cursor .bg { fill: rgba(10, 14, 20, .45); stroke: none; transition: fill .15s; }
+.hand-cursor .border { fill: none; stroke: rgba(255,255,255,.6); stroke-width: 8; }
+.hand-cursor .indicator { fill: none; stroke: var(--ok); stroke-width: 11; stroke-linecap: round; stroke-dasharray: 276.5; stroke-dashoffset: 276.5; opacity: 0; transition: opacity .12s; }
 .hand-cursor span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 48px; }
-.hand-cursor.active .track { stroke: var(--ok); }
+.hand-cursor.hover .bg { fill: rgba(150, 240, 190, .6); }              /* 버튼 위에 올라감: 배경 연한 초록 */
+.hand-cursor.locked .indicator { opacity: 1; }                          /* 버튼 위에 고정: 테두리 인디케이터 켜짐 */
+.hand-cursor.fired .bg { fill: var(--ok); }                             /* 클릭된 순간 반짝 */
 .hand-target { transition: transform .15s, outline-color .15s; }
 .hand-target.hand-hover { outline: 6px solid var(--ok); outline-offset: 4px; }
 .hand-target.hand-picked { transform: scale(.96); }

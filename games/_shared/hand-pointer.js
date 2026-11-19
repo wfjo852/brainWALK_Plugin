@@ -1,12 +1,19 @@
 // ─────────────────────────────────────────────────────────────
 //  게임 공통: 손으로 고르기 (마우스 없이)
 //
-//  - 손을 가슴 높이 이상으로 들면 화면에 손 모양 커서가 나타납니다.
+//  - 손을 가슴 높이 이상으로 들면 화면에 손 커서가 나타납니다.
 //  - 화면 전체를 "몸 앞에서 손이 닿는 범위"에 맞춰 놓아서, 제자리에 서서 팔만 움직여도 화면 끝까지 갑니다.
-//  - class="hand-target" 인 버튼·카드 위에 커서를 1.5초 올려 두면 선택(클릭)됩니다.
 //  - 마우스·터치·키보드(←→↑↓, Enter)로도 똑같이 고를 수 있습니다 (보호자·관리자용).
 //
-//  const pointer = new HandPointer({ client, mirror: true });
+//  손 커서 = 손 모양(✋) + 배경(원) + 테두리 + 테두리 인디케이터(테두리를 따라 차오르는 초록 줄)
+//
+//  상태 (class="hand-target" 인 버튼·카드 기준)
+//    기본   : 버튼 밖                      → 어두운 배경, 흰 테두리
+//    올라감 : 버튼 위 (손이 움직이는 중)    → 배경이 연한 초록색            (커서에 .hover)
+//    고정   : 버튼 위에서 손이 멈춤         → 테두리 인디케이터가 차오름    (커서에 .locked)
+//             다 차면(dwell 초) 클릭 이벤트. 그사이 손이 크게 움직이면 인디케이터는 처음부터
+//
+//  const pointer = new HandPointer({ client, mirror: true, dwell: 1.5, onSelect: el => sound.tick() });
 //  매 프레임: pointer.update(dt)
 // ─────────────────────────────────────────────────────────────
 import { J } from './femto-client.js';
@@ -41,21 +48,33 @@ export function screenToHand(nx, ny, side = -1, mirror = true) {
 }
 
 export class HandPointer {
-  constructor({ client, mirror = true, dwell = 1.5, getBody = null, onSelect = null } = {}) {
+  /**
+   * dwell       : 고정된 뒤 클릭까지 걸리는 초 (테두리 인디케이터가 다 차는 시간)
+   * settle      : 손이 이만큼(초) 멈춰 있어야 "고정"으로 봄
+   * steadyRadius: 이 안에서 움직이면 멈춘 것으로 봄 (화면 짧은 변의 비율, 손 떨림 허용)
+   */
+  constructor({ client, mirror = true, dwell = 1.5, settle = 0.25, steadyRadius = 0.04, getBody = null, onSelect = null } = {}) {
     this.client = client;
     this.mirror = mirror;
     this.dwell = dwell;
+    this.settle = settle;
+    this.steadyRadius = steadyRadius;
     this.getBody = getBody;     // 누가 조작할지 (없으면 카메라에 가장 가까운 사람 중 손 든 사람)
     this.onSelect = onSelect;
     this.enabled = true;
     this.x = -1; this.y = -1; this.visible = false;
     this.target = null; this.progress = 0; this.cooldown = 0;
+    this.anchor = null; this.still = 0;   // 고정 판정: 기준점과 멈춘 시간
 
     this.el = document.createElement('div');
     this.el.className = 'hand-cursor hidden';
-    this.el.innerHTML = `<svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="44"/><circle class="fill" cx="50" cy="50" r="44"/></svg><span>✋</span>`;
+    this.el.innerHTML = `<svg viewBox="0 0 100 100">`
+      + `<circle class="bg" cx="50" cy="50" r="44"/>`          // 배경
+      + `<circle class="border" cx="50" cy="50" r="44"/>`      // 테두리
+      + `<circle class="indicator" cx="50" cy="50" r="44"/>`   // 테두리 인디케이터
+      + `</svg><span>✋</span>`;                                // 손 모양
     document.body.appendChild(this.el);
-    this.fill = this.el.querySelector('.fill');
+    this.indicator = this.el.querySelector('.indicator');
 
     // 키보드: 화살표로 이동, Enter로 선택
     addEventListener('keydown', e => {
@@ -107,31 +126,54 @@ export class HandPointer {
     if (hit !== this.target) {
       this.target?.classList.remove('hand-hover');
       this.target = hit;
-      this.progress = 0;
+      this.resetLock();
       hit?.classList.add('hand-hover');
     }
-    if (hit && this.cooldown === 0) {
+
+    // 고정 판정: 기준점에서 steadyRadius 안에 settle 초 이상 있으면 "고정"
+    let locked = false;
+    if (hit) {
+      const r = this.steadyRadius * Math.min(innerWidth, innerHeight);
+      if (!this.anchor || Math.hypot(this.x - this.anchor.x, this.y - this.anchor.y) > r) this.resetLock();   // 움직임 → 처음부터
+      else this.still += dt;
+      locked = this.still >= this.settle && this.cooldown === 0;
+    }
+    if (locked) {
       this.progress += dt / this.dwell;
       if (this.progress >= 1) {
+        // 인디케이터가 다 참 → 클릭
         this.progress = 0;
         this.cooldown = 1.5;
+        this.still = 0;
         hit.classList.add('hand-picked');
         setTimeout(() => hit.classList.remove('hand-picked'), 400);
+        this.el.classList.add('fired');
+        setTimeout(() => this.el.classList.remove('fired'), 350);
         this.onSelect?.(hit);
         hit.click();
       }
-    } else if (!hit) this.progress = 0;
-    this.fill.style.strokeDashoffset = String(276.5 * (1 - this.progress));
-    this.el.classList.toggle('active', !!hit);
+    } else this.progress = 0;
+
+    this.indicator.style.strokeDashoffset = String(276.5 * (1 - this.progress));
+    this.el.classList.toggle('hover', !!hit);          // 올라감: 배경 연한 초록
+    this.el.classList.toggle('locked', locked);        // 고정: 테두리 인디케이터 켜짐
+  }
+
+  resetLock() {
+    this.anchor = { x: this.x, y: this.y };
+    this.still = 0;
+    this.progress = 0;
   }
 
   hide() {
     if (!this.visible) return;
     this.visible = false;
     this.el.classList.add('hidden');
+    this.el.classList.remove('hover', 'locked');
     this.target?.classList.remove('hand-hover');
     this.target = null;
     this.progress = 0;
+    this.anchor = null; this.still = 0;
   }
 }
 

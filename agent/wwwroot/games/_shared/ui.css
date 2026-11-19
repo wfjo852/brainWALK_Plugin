@@ -1,0 +1,50 @@
+/* 게임 공통 스타일 (어두운 무대 위에 크게 잘 보이도록) */
+:root {
+  --bg: #0e1218;
+  --panel: rgba(16, 20, 28, 0.86);
+  --line: rgba(255, 255, 255, 0.1);
+  --text: #eef1f6;
+  --muted: #9aa3b2;
+  --ok: #3ddc97;
+  --bad: #ff5d6c;
+  --warn: #f5b84b;
+  --blue: #2f6bff;
+  --white: #f4f6fa;
+  --font: "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 16px/1.45 var(--font); overflow: hidden; }
+button { font: inherit; color: inherit; cursor: pointer; }
+.hidden { display: none !important; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; backdrop-filter: blur(12px); }
+
+.btn { padding: 12px 22px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.08); font-weight: 600; }
+.btn:hover { background: rgba(255,255,255,.15); }
+.btn.primary { background: var(--ok); border-color: transparent; color: #0b0e13; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: .45; cursor: default; }
+
+.choice { display: flex; gap: 8px; flex-wrap: wrap; }
+.choice button { min-width: 64px; padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.06); font-weight: 600; }
+.choice button.on { background: var(--text); color: #0b0e13; }
+
+.topbar { position: fixed; top: 16px; left: 16px; display: flex; gap: 8px; z-index: 20; }
+.topbar a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; }
+.topbar a:hover { color: var(--text); }
+
+@media (max-width: 720px) {
+  html, body { font-size: 14px; }
+}
+
+/* ───── 손으로 고르기 ───── */
+.hand-cursor { position: fixed; left: 0; top: 0; width: 104px; height: 104px; margin: -52px 0 0 -52px; pointer-events: none; z-index: 100; will-change: transform; }
+.hand-cursor svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.hand-cursor .track { fill: rgba(10, 14, 20, .45); stroke: rgba(255,255,255,.55); stroke-width: 8; }
+.hand-cursor .fill { fill: none; stroke: var(--ok); stroke-width: 10; stroke-linecap: round; stroke-dasharray: 276.5; stroke-dashoffset: 276.5; }
+.hand-cursor span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 48px; }
+.hand-cursor.active .track { stroke: var(--ok); }
+.hand-target { transition: transform .15s, outline-color .15s; }
+.hand-target.hand-hover { outline: 6px solid var(--ok); outline-offset: 4px; }
+.hand-target.hand-picked { transform: scale(.96); }
+.hand-target:focus-visible { outline: 6px solid var(--warn); outline-offset: 4px; }

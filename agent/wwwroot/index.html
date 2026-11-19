@@ -1,0 +1,1209 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Femto Bolt Skeleton</title>
+<style>
+  :root {
+    --bg: #0b0e13;
+    --panel: rgba(18, 22, 30, 0.82);
+    --line: rgba(255, 255, 255, 0.08);
+    --text: #e6e9ef;
+    --muted: #8a93a3;
+    --ok: #3ddc97;
+    --warn: #f5b84b;
+    --err: #ff5d6c;
+    --demo: #6aa8ff;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.45 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; overflow: hidden; }
+  #view { position: fixed; inset: 0; }
+  #video2d { position: fixed; inset: 0; width: 100%; height: 100%; display: none; }
+  /* 보기: split(왼쪽 아바타 + 오른쪽 내 모습) / video(내 모습) / 3d(스켈레톤 3D) */
+  body.mode-video #video2d, body.mode-split #video2d { display: block; }
+  body.mode-split #video2d { left: 50%; width: 50%; }
+  body.mode-split #view { right: 50%; }
+  body.mode-video #view, body.mode-video #labels, body.mode-split #labels { display: none !important; }
+  body:not(.mode-3d) .only3d { display: none !important; }
+  body.mode-3d .onlyvideo { display: none !important; }
+  body.mode-split #readout { display: none; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .panel-head h2 { margin: 0 !important; }
+  .linkbtn { width: auto; margin: 0; padding: 2px 8px; border: 0; background: transparent; color: var(--muted); font-size: 12px; }
+  .linkbtn:hover { color: var(--text); background: rgba(255,255,255,.08); }
+  #openPanels { position: fixed; top: 16px; right: 16px; width: auto; margin: 0; padding: 7px 12px; display: none;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(10px); }
+  body.panels-hidden #right { display: none; }
+  body.panels-hidden #openPanels { display: block; }
+  #avatarLabels { position: fixed; top: 0; bottom: 0; left: 0; right: 50%; pointer-events: none; overflow: hidden; display: none; }
+  body.mode-split #avatarLabels { display: block; }
+  #divider { position: fixed; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(255,255,255,.1); display: none; }
+  body.mode-split #divider { display: block; }
+  .viewtag { position: fixed; bottom: 16px; padding: 4px 10px; border-radius: 999px; background: var(--panel);
+    border: 1px solid var(--line); color: var(--muted); font-size: 12px; display: none; }
+  body.mode-split .viewtag { display: block; }
+  .seg { display: flex; gap: 4px; padding: 3px; margin-bottom: 6px; border-radius: 9px; background: rgba(255,255,255,.06); }
+  .seg button { flex: 1; margin: 0; padding: 6px 4px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 12.5px; }
+  .seg button.on { background: rgba(255,255,255,.14); color: var(--text); }
+
+  .panel { position: fixed; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; backdrop-filter: blur(10px); padding: 14px 16px; }
+
+  #top { top: 16px; left: 16px; min-width: 300px; max-width: min(460px, calc(100vw - 32px)); }
+  #top h1 { margin: 0 0 8px; font-size: 15px; font-weight: 600; letter-spacing: .2px; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+  .dot.warn { background: var(--warn); }
+  .dot.err { background: var(--err); }
+  .dot.demo { background: var(--demo); box-shadow: 0 0 10px var(--demo); }
+  .tilt { margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .tilt b { color: var(--text); font-weight: 600; }
+  #message { margin-top: 6px; color: var(--muted); font-size: 12.5px; word-break: keep-all; }
+  .stats { display: flex; gap: 18px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .stat b { display: block; font: 600 18px var(--mono); }
+  .stat span { color: var(--muted); font-size: 11.5px; }
+
+  #right { position: fixed; top: 16px; right: 16px; width: 270px; display: flex; flex-direction: column; gap: 12px;
+    max-height: calc(100vh - 32px); }
+  #right .panel { position: static; }
+  #people { overflow-y: auto; min-height: 0; }
+  #controls h2, #readout h2, #people h2 { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .8px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; font-size: 13px; }
+  input[type=range] { width: 100px; accent-color: var(--ok); }
+  input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--ok); }
+  button { width: 100%; margin-top: 8px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: rgba(255,255,255,.06); color: var(--text); font: inherit; cursor: pointer; }
+  button:hover { background: rgba(255,255,255,.12); }
+
+  #readout { left: 16px; bottom: 16px; min-width: 280px; }
+  #readout h2 { text-transform: none; letter-spacing: .2px; }
+  #readout table { border-collapse: collapse; font: 12.5px var(--mono); }
+  #readout td { padding: 2px 10px 2px 0; }
+  #readout td:first-child { font-family: inherit; color: var(--muted); padding-right: 16px; }
+
+  /* 사람 목록 */
+  .people-empty { color: var(--muted); font-size: 12.5px; }
+  .person { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 4px 8px;
+    padding: 8px 0; border-top: 1px solid var(--line); }
+  .person:first-of-type { border-top: 0; padding-top: 0; }
+  .person .swatch { width: 12px; height: 12px; border-radius: 50%; }
+  .person input.name { width: 100%; min-width: 0; padding: 3px 6px; margin-left: -6px; border-radius: 6px;
+    border: 1px solid transparent; background: transparent; color: var(--text); font: 600 14px inherit; font-family: inherit; }
+  .person input.name:hover { border-color: var(--line); }
+  .person input.name:focus { outline: none; border-color: var(--ok); background: rgba(255,255,255,.06); }
+  .person .del { width: 24px; height: 24px; margin: 0; padding: 0; border-radius: 6px; border: 0; background: transparent;
+    color: var(--muted); font-size: 16px; line-height: 1; }
+  .person .del:hover { color: var(--err); background: rgba(255,93,108,.12); }
+  .person .meta { grid-column: 2 / 4; display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
+  .person .meta .live { color: var(--ok); }
+  .person select { flex: 1; min-width: 0; padding: 3px 4px; border-radius: 6px; border: 1px solid var(--line);
+    background: #151a22; color: var(--text); font: 11.5px inherit; font-family: inherit; }
+  .person .nobody { grid-column: 2 / 4; font-size: 11px; color: var(--warn); }
+  .people-help { margin: 10px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+
+  /* 머리 위 이름표 */
+  #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  .tag { position: absolute; transform: translate(-50%, -100%); padding: 3px 10px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; color: #0b0e13; white-space: nowrap; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+  .tag.pending { background: #3a4252 !important; color: var(--muted); font-weight: 500; }
+
+  #hint { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center;
+    color: var(--muted); pointer-events: none; transition: opacity .3s; font-size: 15px; }
+  #hint b { display: block; color: var(--text); font-size: 18px; margin-bottom: 6px; }
+
+  @media (max-width: 720px) {
+    #right { top: auto; bottom: 16px; width: 220px; max-height: 50vh; }
+    #readout { display: none; }
+  }
+</style>
+<script type="importmap">
+  { "imports": {
+      "three": "./lib/three.module.js",
+      "three/addons/controls/OrbitControls.js": "./lib/OrbitControls.js"
+  } }
+</script>
+</head>
+<body>
+<div id="view"></div>
+<canvas id="video2d"></canvas>
+<div id="avatarLabels"></div>
+<div id="divider"></div>
+<div class="viewtag" style="left: calc(25% - 40px)">아바타 · 뒤에서 보기</div>
+<div class="viewtag" style="left: calc(75% - 30px)">내 모습</div>
+
+<div id="top" class="panel">
+  <h1>Femto Bolt Skeleton</h1>
+  <div class="pill"><span id="dot" class="dot"></span><span id="state">에이전트 연결 중…</span></div>
+  <div id="message"></div>
+  <div class="stats">
+    <div class="stat"><b id="fps">0</b><span>수신 fps</span></div>
+    <div class="stat"><b id="bodies">0</b><span>인식된 사람</span></div>
+    <div class="stat"><b id="source">-</b><span>소스</span></div>
+  </div>
+  <div id="tiltInfo" class="tilt">카메라 기울기: 확인 중…</div>
+</div>
+
+<div id="labels"></div>
+
+<button id="openPanels">설정 열기</button>
+<div id="right">
+<div id="controls" class="panel">
+  <div class="panel-head"><h2>보기</h2><button id="hidePanels" class="linkbtn" title="패널 숨기기">숨기기</button></div>
+  <div class="seg" role="tablist">
+    <button id="modeSplit" class="on">분할 보기</button>
+    <button id="modeVideo">내 모습</button>
+    <button id="mode3d">3D</button>
+  </div>
+  <label class="row onlyvideo">배경 지우기 <input id="cutout" type="checkbox" checked></label>
+  <label class="row onlyvideo">경계 다듬기 <input id="edge" type="range" min="0" max="5" step="0.5" value="2.5"></label>
+  <label class="row onlyvideo">스켈레톤 겹쳐 보기 <input id="overlay" type="checkbox" checked></label>
+  <label class="row">거울 모드 <input id="mirror" type="checkbox" checked></label>
+  <label class="row only3d">카메라가 사람 따라가기 <input id="follow" type="checkbox"></label>
+  <label class="row">얼굴 관절 표시 <input id="face" type="checkbox" checked></label>
+  <label class="row">기울기·바닥 보정 <input id="level" type="checkbox" checked></label>
+  <label class="row" title="0 = 끔. 높일수록 가만히 있을 때 떨림이 줄어듭니다 (빠른 동작은 그대로 따라감)">떨림 보정 <input id="smooth" type="range" min="0" max="1" step="0.05" value="0.6"></label>
+  <button id="reset" class="only3d">시점 초기화</button>
+  <button id="openGames" title="청기백기 등 몸으로 하는 게임">🎮 게임 하러 가기</button>
+</div>
+
+<div id="people" class="panel">
+  <div class="panel-head"><h2>사람</h2><button id="cleanupPeople" class="linkbtn" title="자동 등록(사람 N) 중 지금 화면에 없는 사람 지우기">자동 등록 정리</button></div>
+  <div id="peopleList"><div class="people-empty">아직 등록된 사람이 없습니다</div></div>
+  <p class="people-help">처음 보는 사람은 자동으로 등록됩니다. 이름을 눌러 바꾸고 Enter.
+  잘못 알아봤다면 아래 목록에서 맞는 사람을 고르세요.</p>
+</div>
+</div>
+
+<div id="readout" class="panel">
+  <h2 id="readoutTitle">관절 좌표 (cm · 카메라 기준)</h2>
+  <table id="readoutTable"></table>
+</div>
+
+<div id="hint"><b>사람을 찾는 중</b>카메라 앞 1~3m 거리에서 전신이 보이도록 서 주세요</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ───────── Azure Kinect / Femto Bolt Body Tracking 관절 정의 (32개) ─────────
+const JOINT_NAMES = [
+  'Pelvis','SpineNavel','SpineChest','Neck','ClavicleLeft','ShoulderLeft','ElbowLeft','WristLeft',
+  'HandLeft','HandTipLeft','ThumbLeft','ClavicleRight','ShoulderRight','ElbowRight','WristRight','HandRight',
+  'HandTipRight','ThumbRight','HipLeft','KneeLeft','AnkleLeft','FootLeft','HipRight','KneeRight',
+  'AnkleRight','FootRight','Head','Nose','EyeLeft','EarLeft','EyeRight','EarRight'];
+const J = Object.fromEntries(JOINT_NAMES.map((n, i) => [n, i]));
+// [자식, 부모] — Microsoft 공식 샘플의 연결 구조와 동일
+const BONES = [
+  [1,0],[2,1],[3,2],[4,2],[5,4],[6,5],[7,6],[8,7],[9,8],[10,7],
+  [11,2],[12,11],[13,12],[14,13],[15,14],[16,15],[17,14],
+  [18,0],[19,18],[20,19],[21,20],[22,0],[23,22],[24,23],[25,24],
+  [26,3],[27,26],[28,27],[29,28],[30,27],[31,30]];
+const FACE = new Set([J.Nose, J.EyeLeft, J.EarLeft, J.EyeRight, J.EarRight]);
+const READOUT = [['머리', J.Head], ['골반', J.Pelvis], ['왼손', J.HandLeft], ['오른손', J.HandRight], ['왼발', J.FootLeft], ['오른발', J.FootRight]];
+const BODY_COLORS = [0x3ddc97, 0x6aa8ff, 0xff8a5c, 0xd77bff, 0xffd84d, 0x4de1ff];
+
+// ───────── 3D 장면 ─────────
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+view.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0e13);
+scene.fog = new THREE.Fog(0x0b0e13, 6, 14);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 50);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+const DEFAULT_TARGET = new THREE.Vector3(0, -0.1, -2.4);
+function resetView() {
+  camera.position.set(0, 0.4, 1.2);
+  controls.target.copy(DEFAULT_TARGET);
+  controls.update();
+}
+resetView();
+
+scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x1a1f28, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+sun.position.set(1.5, 3, 2);
+scene.add(sun);
+
+// 바닥 그리드: 발 위치로 높이를 자동 추정
+const grid = new THREE.GridHelper(10, 20, 0x3a4252, 0x1e2430);
+grid.position.set(0, -1.0, -2.5);
+scene.add(grid);
+let floorY = null;
+
+// 카메라(Femto Bolt) 위치 표시
+const sensor = new THREE.Mesh(new THREE.BoxGeometry(0.115, 0.04, 0.04),
+  new THREE.MeshStandardMaterial({ color: 0x2b3240, emissive: 0x0e1218 }));
+const lens = new THREE.Mesh(new THREE.CircleGeometry(0.008, 16), new THREE.MeshBasicMaterial({ color: 0x6aa8ff }));
+lens.position.z = -0.021; lens.rotation.y = Math.PI;
+sensor.add(lens);
+scene.add(sensor);
+
+// ───────── 스켈레톤 객체 ─────────
+const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
+const boneGeo = new THREE.CylinderGeometry(1, 1, 1, 12);
+const UP = new THREE.Vector3(0, 1, 0);
+const GRAY = new THREE.Color(0x5a6272);
+const PENDING = new THREE.Color(0x8a93a3);   // 누구인지 확인 중
+
+// ───────── 떨림 보정: One Euro 필터 ─────────
+// 가만히 있을 때는 강하게 걸러 떨림을 없애고, 빠르게 움직일수록 약하게 걸러 늦게 따라오지 않게 합니다.
+// (Casiez et al., "1€ Filter", CHI 2012)
+class OneEuro {
+  constructor() { this.x = null; this.dx = 0; this.t = 0; }
+  reset() { this.x = null; }
+  filter(v, t, minCutoff, beta) {
+    if (this.x === null || !(t > this.t) || t - this.t > 0.5) { this.x = v; this.dx = 0; this.t = t; return v; }
+    const dt = t - this.t;
+    this.t = t;
+    const alpha = fc => 1 / (1 + 1 / (2 * Math.PI * fc * dt));
+    this.dx += alpha(3.0) * ((v - this.x) / dt - this.dx);   // 속도 추정 (3Hz)
+    this.x += alpha(minCutoff + beta * Math.abs(this.dx)) * (v - this.x);
+    return this.x;
+  }
+}
+// 슬라이더(0~1) → 최소 차단 주파수(Hz). 0.5 ≈ 2.2Hz, 1 ≈ 0.5Hz
+const smoothCutoff = s => 10 * Math.pow(0.05, s);
+// 움직임 속도에 따라 필터를 얼마나 빨리 풀지. 시뮬레이션(떨림 ±10mm, 손 흔들기 1.5Hz·25cm)으로 맞춘 값:
+// 가만히 있을 때 떨림 약 75% 감소, 빠른 동작 오차는 필터 없을 때와 비슷
+const BETA_3D = 20;       // m/s 단위
+const BETA_2D = 0.08;     // 픽셀/s 단위 (720p, 약 2.5m 거리 기준 1m ≈ 250px)
+
+// ───────── 카메라 기울기 보정 ─────────
+// 에이전트가 IMU로 잰 "위쪽" 방향(깊이 카메라 좌표)을 three.js 좌표로 바꿔, 그 방향이 정확히 위가 되도록 회전
+const levelQ = new THREE.Quaternion();
+let cameraUp = null, cameraSource = null, cameraInfoAt = 0;
+const hex = n => '#' + n.toString(16).padStart(6, '0');
+
+// ───────── 사람 목록 (에이전트가 관리, people.json 에 저장) ─────────
+let people = [];                   // [{id, name, color, auto, track, lastSeen}]
+const personById = id => people.find(p => p.id === id);
+const labelsEl = document.getElementById('labels');
+
+class SkeletonView {
+  constructor(id) {
+    this.id = id;          // Body Tracking 의 body id (나갔다 들어오면 바뀜)
+    this.pid = null;       // 등록된 사람 id (확인 전에는 null)
+    this.color = PENDING.clone();
+    this.label = document.createElement('div');
+    this.label.className = 'tag pending';
+    labelsEl.appendChild(this.label);
+    this.group = new THREE.Group();
+    this.target = Array.from({ length: 32 }, () => new THREE.Vector3());
+    this.raw = Array.from({ length: 32 }, () => new THREE.Vector3());
+    this.f3 = Array.from({ length: 96 }, () => new OneEuro());
+    this.f2 = Array.from({ length: 64 }, () => new OneEuro());
+    this.pos = Array.from({ length: 32 }, () => new THREE.Vector3());
+    this.conf = new Uint8Array(32);
+    this.initialized = false;
+
+    this.joints = this.target.map((_, i) => {
+      const m = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({ color: this.color, roughness: .4 }));
+      m.scale.setScalar(FACE.has(i) ? 0.014 : (i === J.Head ? 0.0 : 0.03));
+      this.group.add(m);
+      return m;
+    });
+    this.head = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({
+      color: this.color, transparent: true, opacity: 0.28, roughness: .3 }));
+    this.head.scale.setScalar(0.1);
+    this.group.add(this.head);
+
+    this.bones = BONES.map(([c, p]) => {
+      const m = new THREE.Mesh(boneGeo, new THREE.MeshStandardMaterial({ color: this.color, roughness: .5 }));
+      this.group.add(m);
+      return { mesh: m, c, p };
+    });
+    scene.add(this.group);
+    this.refreshPerson();
+  }
+
+  setFrame2D(p2, t) {
+    if (!p2) { this.has2d = false; return; }
+    this.p2t ??= new Float32Array(64);
+    this.p2 ??= new Float32Array(64);
+    const s = parseFloat(ui.smooth.value);
+    for (let i = 0; i < 64; i++) {
+      const f = this.f2[i];
+      if (p2[i] < 0 || s <= 0) { f.reset(); this.p2t[i] = p2[i]; continue; }   // 투영 실패(-1)는 그대로
+      const conf = this.conf[i >> 1];
+      this.p2t[i] = f.filter(p2[i], t, smoothCutoff(s) * (conf < 2 ? 0.5 : 1), BETA_2D);
+    }
+    if (!this.has2d) this.p2.set(this.p2t);
+    this.has2d = true;
+  }
+
+  resetFilters() {
+    for (const f of this.f3) f.reset();
+    for (const f of this.f2) f.reset();
+    this.initialized = false;
+    if (this.avatar) this.avatar.init = false;
+  }
+
+  update2D(k) {
+    if (!this.has2d) return;
+    for (let i = 0; i < 64; i++) {
+      // 투영 실패(-1)는 그대로
+      if (this.p2t[i] < 0 || this.p2[i] < 0) this.p2[i] = this.p2t[i];
+      else this.p2[i] += (this.p2t[i] - this.p2[i]) * k;
+    }
+  }
+
+  setFrame(j, mirror, t) {
+    const s = parseFloat(ui.smooth.value), cut = smoothCutoff(s);
+    const v = new THREE.Vector3();
+    for (let i = 0; i < 32; i++) {
+      this.conf[i] = j[i * 4 + 3];
+      // 카메라 좌표(mm, x 오른쪽 / y 아래 / z 앞) → three.js(m, x 오른쪽 / y 위 / z 뒤) → 기울기 보정
+      v.set(j[i * 4] / 1000, -j[i * 4 + 1] / 1000, -j[i * 4 + 2] / 1000).applyQuaternion(levelQ);
+      if (s > 0) {
+        const mc = cut * (this.conf[i] < 2 ? 0.5 : 1);   // 가려진(추정) 관절은 더 강하게
+        v.set(this.f3[i * 3].filter(v.x, t, mc, BETA_3D), this.f3[i * 3 + 1].filter(v.y, t, mc, BETA_3D), this.f3[i * 3 + 2].filter(v.z, t, mc, BETA_3D));
+      } else for (let a = 0; a < 3; a++) this.f3[i * 3 + a].reset();
+      this.raw[i].copy(v);                                       // 아바타는 뒤에서 보므로 거울 적용 안 함
+      this.target[i].set(mirror ? -v.x : v.x, v.y, v.z);
+    }
+    if (!this.initialized) { this.pos.forEach((p, i) => p.copy(this.target[i])); this.initialized = true; }
+  }
+
+  setPerson(pid) {
+    if (pid === this.pid) return;
+    this.pid = pid;
+    this.refreshPerson();
+  }
+
+  // 사람 정보(이름/색)가 바뀌면 다시 칠하기
+  refreshPerson() {
+    const p = personById(this.pid);
+    if (p) {
+      this.color.set(BODY_COLORS[p.color % BODY_COLORS.length]);
+      this.label.textContent = p.name;
+      this.label.className = 'tag';
+      this.label.style.background = hex(BODY_COLORS[p.color % BODY_COLORS.length]);
+    } else {
+      this.color.copy(PENDING);
+      this.label.textContent = '누구인지 확인 중…';
+      this.label.className = 'tag pending';
+      this.label.style.background = '';
+    }
+    this.head.material.color.copy(this.color);
+    this.avatar?.setPerson(p, this.color);
+  }
+
+  // 머리 위 이름표 위치
+  placeLabel() {
+    const v = this.pos[J.Head].clone();
+    v.y += 0.2;
+    v.project(camera);
+    const visible = v.z < 1 && this.conf[J.Head] > 0;
+    this.label.style.display = visible ? '' : 'none';
+    if (!visible) return;
+    this.label.style.left = ((v.x + 1) / 2 * innerWidth) + 'px';
+    this.label.style.top = ((1 - v.y) / 2 * innerHeight) + 'px';
+  }
+
+  update(k, showFace) {
+    for (let i = 0; i < 32; i++) {
+      this.pos[i].lerp(this.target[i], k);
+      const m = this.joints[i];
+      m.position.copy(this.pos[i]);
+      m.visible = this.conf[i] > 0 && (showFace || !FACE.has(i));
+      m.material.color.copy(this.conf[i] >= 2 ? this.color : GRAY);
+    }
+    this.head.position.copy(this.pos[J.Head]);
+    this.head.visible = this.conf[J.Head] > 0;
+
+    for (const b of this.bones) {
+      const a = this.pos[b.p], c = this.pos[b.c];
+      const dir = new THREE.Vector3().subVectors(c, a);
+      const len = dir.length();
+      const visible = len > 1e-4 && this.conf[b.c] > 0 && this.conf[b.p] > 0 && (showFace || !FACE.has(b.c));
+      b.mesh.visible = visible;
+      if (!visible) continue;
+      b.mesh.position.copy(a).addScaledVector(dir, 0.5);
+      b.mesh.quaternion.setFromUnitVectors(UP, dir.divideScalar(len));
+      const r = FACE.has(b.c) ? 0.006 : 0.018;
+      b.mesh.scale.set(r, len, r);
+      b.mesh.material.color.copy(Math.min(this.conf[b.c], this.conf[b.p]) >= 2 ? this.color : GRAY);
+    }
+  }
+
+  dispose() {
+    this.label.remove();
+    this.avatar?.dispose();
+    scene.remove(this.group);
+    this.group.traverse(o => o.material?.dispose());
+  }
+}
+
+const skeletons = new Map();   // bodyId → SkeletonView
+let lastBodies = [];
+
+// ───────── UI ─────────
+const $ = id => document.getElementById(id);
+const ui = { mirror: $('mirror'), follow: $('follow'), face: $('face'), smooth: $('smooth') };
+$('reset').onclick = resetView;
+ui.mirror.onchange = () => { for (const s of skeletons.values()) s.initialized = false; };
+ui.level = $('level');
+try { const v = localStorage.getItem('level'); if (v !== null) ui.level.checked = v === '1'; } catch {}
+try { const v = localStorage.getItem('smooth2'); if (v !== null) ui.smooth.value = v; } catch {}
+ui.level.onchange = () => { try { localStorage.setItem('level', ui.level.checked ? '1' : '0'); } catch {} applyLevel(); };
+ui.smooth.oninput = () => { try { localStorage.setItem('smooth2', ui.smooth.value); } catch {} };
+
+function setStatus(kind, label, message = '') {
+  $('dot').className = 'dot ' + kind;
+  $('state').textContent = label;
+  $('message').textContent = message;
+}
+
+const readoutRows = READOUT.map(([name]) => {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${name}</td><td>-</td><td>-</td><td>-</td>`;
+  $('readoutTable').appendChild(tr);
+  return tr.querySelectorAll('td');
+});
+function updateReadout(body) {
+  READOUT.forEach(([, idx], r) => {
+    const cells = readoutRows[r];
+    if (!body) { cells[1].textContent = cells[2].textContent = cells[3].textContent = '-'; return; }
+    const j = body.j;
+    const cm = v => String(Math.round(v / 10)).padStart(4);
+    cells[1].textContent = 'x ' + cm(j[idx * 4]);
+    cells[2].textContent = 'y ' + cm(j[idx * 4 + 1]);
+    cells[3].textContent = 'z ' + cm(j[idx * 4 + 2]);
+  });
+}
+
+// ───────── WebSocket ─────────
+// 기본: 이 페이지를 띄운 에이전트에 연결. 다른 주소는 ?ws=ws://호스트:포트/ws
+const params = new URLSearchParams(location.search);
+const WS_URL = params.get('ws') ||
+  (location.protocol.startsWith('http') ? `ws://${location.host}/ws` : 'ws://localhost:5000/ws');
+
+let frameCount = 0, lastBodySeen = performance.now(), sourceRunning = false, retryMs = 500;
+
+let socket = null;
+function send(cmd) {
+  if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(cmd));
+}
+
+function connect() {
+  const ws = new WebSocket(WS_URL);
+  socket = ws;
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = () => {
+    retryMs = 500;
+    setStatus('warn', '에이전트 연결됨', '카메라 상태 확인 중…');
+    send({ cmd: 'video', on: viewMode !== '3d' });
+  };
+  ws.onmessage = ev => {
+    if (typeof ev.data !== 'string') { onVideo(ev.data); return; }
+    const msg = JSON.parse(ev.data);
+    if (msg.type === 'status') onStatus(msg);
+    else if (msg.type === 'frame') onFrame(msg);
+    else if (msg.type === 'people') onPeople(msg);
+    else if (msg.type === 'reload') location.reload();   // 웹 화면 파일이 바뀜
+    else if (msg.type === 'camera') onCamera(msg);
+  };
+  ws.onclose = () => {
+    sourceRunning = false;
+    setStatus('err', '에이전트에 연결할 수 없음',
+      `FemtoSkeletonAgent.exe가 실행 중인지 확인하세요 (${WS_URL}). 자동으로 다시 연결합니다.`);
+    clearBodies();
+    setTimeout(connect, retryMs);
+    retryMs = Math.min(retryMs * 2, 5000);
+  };
+}
+
+function onStatus(s) {
+  $('source').textContent = s.source === 'demo' ? '데모' : '카메라';
+  sourceRunning = s.state === 'running';
+  if (s.state === 'running') setStatus(s.source === 'demo' ? 'demo' : 'ok', s.source === 'demo' ? '데모 모드 실행 중' : '트래킹 중', s.message);
+  else if (s.state === 'error') { setStatus('err', '카메라 문제', s.message); clearBodies(); }
+  else setStatus('warn', '준비 중', s.message);
+}
+
+function onCamera(m) {
+  const [x, y, z] = m.up;
+  cameraUp = new THREE.Vector3(x, -y, -z).normalize();   // 깊이 카메라 → three.js 좌표
+  cameraSource = m.source;
+  cameraInfoAt = performance.now();
+  applyLevel();
+}
+
+function applyLevel() {
+  const before = levelQ.clone();
+  if (ui.level.checked && cameraUp) levelQ.setFromUnitVectors(cameraUp, new THREE.Vector3(0, 1, 0));
+  else levelQ.identity();
+  // 보정 각도가 크게 바뀌면(켜기/끄기) 필터를 새로 시작해서 미끄러지는 모습이 없게
+  if (before.angleTo(levelQ) > 0.01) for (const s of skeletons.values()) s.resetFilters();
+  renderTiltInfo();
+}
+
+function renderTiltInfo() {
+  const el = $('tiltInfo');
+  if (!cameraUp) {
+    el.textContent = sourceRunning ? '카메라 기울기: 기울기 센서 정보 없음 (보정 안 됨)' : '카메라 기울기: 확인 중…';
+    return;
+  }
+  // three.js 좌표의 위쪽 → 깊이 카메라 기준 각도 (아래로 내려다봄 / 옆으로 기움)
+  const pitch = Math.atan2(cameraUp.z, cameraUp.y) * 180 / Math.PI;
+  const roll = Math.atan2(cameraUp.x, cameraUp.y) * 180 / Math.PI;
+  const desc = `${pitch >= 0 ? '아래로' : '위로'} ${Math.abs(pitch).toFixed(1)}°, ${roll >= 0 ? '오른쪽으로' : '왼쪽으로'} ${Math.abs(roll).toFixed(1)}°`;
+  el.innerHTML = `카메라 기울기: <b>${desc}</b> · ${ui.level.checked ? '보정 중' : '보정 꺼짐'}${cameraSource === 'demo' ? ' (데모)' : ''}`;
+}
+
+function onFrame(f) {
+  frameCount++;
+  const mirror = ui.mirror.checked;
+  const seen = new Set();
+  for (const b of f.bodies) {
+    seen.add(b.id);
+    let s = skeletons.get(b.id);
+    if (!s) { s = new SkeletonView(b.id); skeletons.set(b.id, s); }
+    s.setFrame(b.j, mirror, f.t / 1e6);
+    s.setFrame2D(b.p2, f.t / 1e6);
+    s.setPerson(b.pid ?? null);
+  }
+  for (const [id, s] of skeletons) if (!seen.has(id)) { s.dispose(); skeletons.delete(id); }
+  lastBodies = f.bodies;
+  if (f.bodies.length) lastBodySeen = performance.now();
+}
+
+function clearBodies() {
+  for (const s of skeletons.values()) s.dispose();
+  skeletons.clear();
+  lastBodies = [];
+}
+
+setInterval(() => {
+  $('fps').textContent = frameCount;
+  frameCount = 0;
+  $('bodies').textContent = skeletons.size;
+  updateReadout(lastBodies[0]);
+  const first = lastBodies[0] && personById(lastBodies[0].pid);
+  $('readoutTitle').textContent = `관절 좌표${first ? ' · ' + first.name : ''} (cm · 카메라 기준)`;
+  renderPeopleMeta();
+}, 1000);
+
+// ───────── 사람 목록 패널 ─────────
+function onPeople(msg) {
+  people = msg.people;
+  for (const s of skeletons.values()) s.refreshPerson();
+  renderPeople();
+}
+
+function ago(iso) {
+  const sec = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (sec < 60) return '방금 전';
+  if (sec < 3600) return `${Math.floor(sec / 60)}분 전`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}시간 전`;
+  return new Date(iso).toLocaleDateString();
+}
+
+let editing = false, renderPending = false;
+
+function renderPeople() {
+  // 이름을 고치는 중에는 다시 그리지 않음 (입력이 날아가지 않도록)
+  if (editing) { renderPending = true; return; }
+  renderPending = false;
+  const list = $('peopleList');
+  list.replaceChildren();
+  if (!people.length) {
+    list.innerHTML = '<div class="people-empty">아직 등록된 사람이 없습니다</div>';
+    return;
+  }
+  for (const p of people) {
+    const row = document.createElement('div');
+    row.className = 'person';
+    row.dataset.pid = p.id;
+
+    const sw = document.createElement('span');
+    sw.className = 'swatch';
+    sw.style.background = hex(BODY_COLORS[p.color % BODY_COLORS.length]);
+
+    const name = document.createElement('input');
+    name.className = 'name';
+    name.value = p.name;
+    name.maxLength = 30;
+    name.title = '눌러서 이름 바꾸기';
+    name.onfocus = () => { editing = true; name.select(); };
+    const commit = () => {
+      editing = false;
+      const v = name.value.trim();
+      if (v && v !== p.name) send({ cmd: 'rename', pid: p.id, name: v });
+      else name.value = p.name;
+      if (renderPending) renderPeople();
+    };
+    name.onblur = commit;
+    name.onkeydown = e => {
+      if (e.key === 'Enter') name.blur();
+      if (e.key === 'Escape') { name.value = p.name; name.blur(); }
+    };
+
+    const del = document.createElement('button');
+    del.className = 'del';
+    del.textContent = '×';
+    del.title = '목록에서 지우기';
+    del.onclick = () => { if (confirm(`'${p.name}'을(를) 목록에서 지울까요?`)) send({ cmd: 'delete', pid: p.id }); };
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const st = document.createElement('span');
+    st.className = 'status';
+    meta.appendChild(st);
+    // 체형을 아직 못 잰 사람은 나갔다 들어오면 못 알아볼 수 있음 → 바로잡기 안내
+    const nb = document.createElement('div');
+    nb.className = 'nobody';
+
+    // 지금 보이는 사람: 잘못 알아봤을 때 바로잡기
+    if (p.track != null) {
+      const sel = document.createElement('select');
+      sel.title = '이 사람이 다른 사람이면 골라 주세요';
+      sel.add(new Option('다른 사람이에요…', ''));
+      for (const o of people) if (o.id !== p.id) sel.add(new Option(`→ ${o.name}`, o.id));
+      sel.add(new Option('→ 새 사람으로 등록', '__new'));
+      sel.onchange = () => {
+        if (sel.value === '__new') send({ cmd: 'new', track: p.track });
+        else if (sel.value) send({ cmd: 'assign', track: p.track, pid: sel.value });
+        sel.value = '';
+      };
+      meta.appendChild(sel);
+    }
+    row.append(sw, name, del, meta, nb);
+    list.appendChild(row);
+  }
+  renderPeopleMeta();
+}
+
+function renderPeopleMeta() {
+  for (const row of document.querySelectorAll('.person')) {
+    const p = personById(row.dataset.pid);
+    const st = row.querySelector('.status');
+    if (!p || !st) continue;
+    st.className = 'status' + (p.track != null ? ' live' : '');
+    st.textContent = p.track != null ? '● 보는 중' : ago(p.lastSeen);
+    const nb = row.querySelector('.nobody');
+    if (nb) nb.textContent = p.measured === 0
+      ? '체형 기록 없음 · 다시 들어오면 못 알아볼 수 있어요. 화면에 보일 때 "다른 사람이에요…"로 지정하면 기록됩니다'
+      : '';
+  }
+}
+
+// ───────── 내 모습 + 스켈레톤 (2D 영상) ─────────
+const ui2 = { cutout: $('cutout'), overlay: $('overlay'), edge: $('edge') };
+try { const e = localStorage.getItem('edge'); if (e !== null) ui2.edge.value = e; } catch {}
+ui2.edge.oninput = () => { try { localStorage.setItem('edge', ui2.edge.value); } catch {} };
+let viewMode = 'split';
+try { viewMode = localStorage.getItem('viewMode2') || 'split'; } catch {}
+
+function setMode(m) {
+  viewMode = m;
+  for (const k of ['split', 'video', '3d']) document.body.classList.toggle('mode-' + k, m === k);
+  $('modeSplit').classList.toggle('on', m === 'split');
+  $('modeVideo').classList.toggle('on', m === 'video');
+  $('mode3d').classList.toggle('on', m === '3d');
+  try { localStorage.setItem('viewMode2', m); } catch {}
+  send({ cmd: 'video', on: m !== '3d' });   // 3D 에서는 영상 전송을 멈춰 부하를 줄임
+  resizeAll();
+}
+$('modeSplit').onclick = () => setMode('split');
+$('hidePanels').onclick = () => document.body.classList.add('panels-hidden');
+$('openPanels').onclick = () => document.body.classList.remove('panels-hidden');
+$('openGames').onclick = () => { location.href = 'games/'; };
+$('cleanupPeople').onclick = () => {
+  const n = people.filter(p => p.auto && p.track == null).length;
+  if (!n) { alert('정리할 자동 등록 사람이 없습니다.'); return; }
+  if (confirm(`자동으로 등록된 "사람 N" ${n}명을 지울까요?\n(직접 이름을 붙인 사람과 지금 화면에 있는 사람은 남습니다)`)) send({ cmd: 'cleanup' });
+};
+$('modeVideo').onclick = () => setMode('video');
+$('mode3d').onclick = () => setMode('3d');
+
+const vcanvas = $('video2d');
+const vctx = vcanvas.getContext('2d');
+const comp = document.createElement('canvas');          // 배경을 지운 결과 (영상 해상도)
+const compCtx = comp.getContext('2d');
+const maskCanvas = document.createElement('canvas');    // 사람 마스크 (흰색 + 알파)
+const maskCtx = maskCanvas.getContext('2d');
+let maskImage = null, videoW = 0, videoH = 0, videoReady = false, lastVideoAt = 0;
+let decoding = false, pendingVideo = null, videoFrames = 0;
+
+// ───── 마스크 경계 다듬기 ─────
+// 카메라 마스크는 깊이 해상도라 계단·점 튐·작은 구멍·프레임마다 떨림이 있습니다.
+//  1) 프레임 사이 평균 (떨림 줄이기)  2) 흐림 (계단·구멍 메우기)
+//  3) 가운데 값 기준으로 다시 또렷하게 (흐릿한 테두리 없이 매끄러운 곡선만 남김)
+let cov = null, prevCov = null, tmpCov = null;
+
+function boxBlur(src, tmp, w, h, r) {
+  const div = 1 / (2 * r + 1);
+  for (let y = 0; y < h; y++) {                 // 가로
+    const row = y * w;
+    let acc = src[row] * (r + 1);
+    for (let x = 1; x <= r; x++) acc += src[row + Math.min(x, w - 1)];
+    for (let x = 0; x < w; x++) {
+      tmp[row + x] = acc * div;
+      acc += src[row + Math.min(x + r + 1, w - 1)] - src[row + Math.max(x - r, 0)];
+    }
+  }
+  for (let x = 0; x < w; x++) {                 // 세로
+    let acc = tmp[x] * (r + 1);
+    for (let y = 1; y <= r; y++) acc += tmp[Math.min(y, h - 1) * w + x];
+    for (let y = 0; y < h; y++) {
+      src[y * w + x] = acc * div;
+      acc += tmp[Math.min(y + r + 1, h - 1) * w + x] - tmp[Math.max(y - r, 0) * w + x];
+    }
+  }
+}
+
+function refineMask(mask, w, h, out) {
+  const n = w * h;
+  const level = parseFloat(ui2.edge.value);
+  if (level <= 0) {                              // 다듬기 끔: 받은 그대로
+    for (let i = 0; i < n; i++) out[i * 4 + 3] = mask[i] >= 128 ? 255 : 0;
+    prevCov = null;
+    return;
+  }
+  if (!cov || cov.length !== n) { cov = new Float32Array(n); tmpCov = new Float32Array(n); prevCov = null; }
+  for (let i = 0; i < n; i++) cov[i] = mask[i] / 255;
+
+  // 1) 프레임 사이 평균: 강할수록 떨림이 줄고, 빠르게 움직일 때 테두리가 살짝 늦게 따라옴
+  const keep = Math.min(0.5, 0.12 * level);
+  if (prevCov) for (let i = 0; i < n; i++) cov[i] = cov[i] * (1 - keep) + prevCov[i] * keep;
+  else prevCov = new Float32Array(n);
+  prevCov.set(cov);
+
+  // 2) 흐림 (박스 블러 2번 ≈ 가우시안)
+  const r = Math.max(1, Math.round(level * w / 640));
+  boxBlur(cov, tmpCov, w, h, r);
+  boxBlur(cov, tmpCov, w, h, Math.max(1, r >> 1));
+
+  // 3) 가운데 값 근처에서 부드럽게 잘라 매끄러운 경계 (1~2픽셀만 반투명)
+  // 기준을 0.5보다 살짝 높여 경계를 안쪽으로 당김 → 배경색 테두리가 남지 않음
+  const lo = 0.5, hi = 0.64, inv = 1 / (hi - lo);
+  for (let i = 0; i < n; i++) {
+    let t = (cov[i] - lo) * inv;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    out[i * 4 + 3] = (t * t * (3 - 2 * t) * 255) | 0;
+  }
+}
+
+async function inflate(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+// 영상 패킷: 헤더 18바이트 + 이미지(JPEG/BMP) + zlib 마스크  (VideoPacket.cs 참고)
+async function onVideo(buf) {
+  if (decoding) { pendingVideo = buf; return; }   // 처리 중이면 최신 것 하나만 보관
+  decoding = true;
+  try {
+    const v = new DataView(buf);
+    if (v.getUint8(0) !== 0x56) return;
+    const fmt = v.getUint8(1);
+    const iw = v.getUint16(2, true), ih = v.getUint16(4, true);
+    const mw = v.getUint16(6, true), mh = v.getUint16(8, true);
+    const il = v.getUint32(10, true), ml = v.getUint32(14, true);
+    const img = new Uint8Array(buf, 18, il), mz = new Uint8Array(buf, 18 + il, ml);
+
+    const [bmp, mask] = await Promise.all([
+      createImageBitmap(new Blob([img], { type: fmt === 1 ? 'image/jpeg' : 'image/bmp' })),
+      inflate(mz),
+    ]);
+
+    if (maskCanvas.width !== mw || maskCanvas.height !== mh || !maskImage) {
+      maskCanvas.width = mw; maskCanvas.height = mh;
+      maskImage = maskCtx.createImageData(mw, mh);
+      maskImage.data.fill(255);
+    }
+    refineMask(mask, mw, mh, maskImage.data);
+    maskCtx.putImageData(maskImage, 0, 0);
+
+    if (comp.width !== iw || comp.height !== ih) { comp.width = iw; comp.height = ih; }
+    compCtx.globalCompositeOperation = 'copy';
+    compCtx.drawImage(bmp, 0, 0);
+    bmp.close();
+    if (ui2.cutout.checked) {
+      // 다듬은 마스크를 영상 크기로 부드럽게 키워서 사람 부분만 남김
+      compCtx.globalCompositeOperation = 'destination-in';
+      compCtx.imageSmoothingEnabled = true;
+      compCtx.imageSmoothingQuality = 'high';
+      compCtx.drawImage(maskCanvas, 0, 0, iw, ih);
+    }
+    compCtx.globalCompositeOperation = 'source-over';
+    videoW = iw; videoH = ih; videoReady = true; lastVideoAt = performance.now(); videoFrames++;
+  } catch (e) {
+    console.warn('영상 처리 실패', e);
+  } finally {
+    decoding = false;
+    if (pendingVideo) { const b = pendingVideo; pendingVideo = null; onVideo(b); }
+  }
+}
+
+function drawVideo(k) {
+  const dpr = Math.min(devicePixelRatio, 2);
+  const W = Math.round(vcanvas.clientWidth * dpr), H = Math.round(vcanvas.clientHeight * dpr);
+  if (vcanvas.width !== W || vcanvas.height !== H) { vcanvas.width = W; vcanvas.height = H; }
+  vctx.setTransform(1, 0, 0, 1, 0, 0);
+  vctx.fillStyle = '#0b0e13';
+  vctx.fillRect(0, 0, W, H);
+
+  const live = videoReady && performance.now() - lastVideoAt < 2000;
+  if (!live) {
+    vctx.fillStyle = '#8a93a3';
+    vctx.font = `${15 * dpr}px "Segoe UI", "Malgun Gothic", sans-serif`;
+    vctx.textAlign = 'center';
+    vctx.fillText(sourceRunning ? '카메라 영상을 기다리는 중…' : '', W / 2, H / 2 + 60 * dpr);
+    return;
+  }
+
+  // 화면에 맞추기 (비율 유지)
+  const scale = Math.min(W / videoW, H / videoH);
+  const dw = videoW * scale, dh = videoH * scale, dx = (W - dw) / 2, dy = (H - dh) / 2;
+  const mirror = ui.mirror.checked;
+  vctx.save();
+  if (mirror) { vctx.translate(W, 0); vctx.scale(-1, 1); }
+  vctx.drawImage(comp, mirror ? W - dx - dw : dx, dy, dw, dh);
+  vctx.restore();
+
+  if (!ui2.overlay.checked) return;
+  // 영상 픽셀 → 화면 좌표 (거울 모드면 좌우 반전, 글자는 반전하지 않음)
+  const sx = u => mirror ? dx + dw - u * scale : dx + u * scale;
+  const sy = v => dy + v * scale;
+  const showFace = ui.face.checked;
+  const unit = scale * videoW / 1280;   // 720p 기준 1픽셀이 화면에서 차지하는 크기
+  const lw = Math.max(2.5 * dpr, 5 * unit);
+
+  for (const s of skeletons.values()) {
+    s.update2D(k);
+    if (!s.has2d) continue;
+    const p = s.p2, col = '#' + s.color.getHexString();
+    const ok = i => p[i * 2] >= 0 && s.conf[i] > 0 && (showFace || !FACE.has(i));
+    vctx.lineCap = 'round';
+    for (const [c, pa] of BONES) {
+      if (!ok(c) || !ok(pa)) continue;
+      vctx.strokeStyle = Math.min(s.conf[c], s.conf[pa]) >= 2 ? col : '#5a6272';
+      vctx.lineWidth = FACE.has(c) ? lw * 0.4 : lw;
+      vctx.beginPath();
+      vctx.moveTo(sx(p[pa * 2]), sy(p[pa * 2 + 1]));
+      vctx.lineTo(sx(p[c * 2]), sy(p[c * 2 + 1]));
+      vctx.stroke();
+    }
+    for (let i = 0; i < 32; i++) {
+      if (!ok(i) || i === J.Head) continue;
+      vctx.fillStyle = s.conf[i] >= 2 ? '#ffffff' : '#8a93a3';
+      vctx.beginPath();
+      vctx.arc(sx(p[i * 2]), sy(p[i * 2 + 1]), FACE.has(i) ? lw * 0.5 : lw * 0.9, 0, Math.PI * 2);
+      vctx.fill();
+      vctx.strokeStyle = col; vctx.lineWidth = lw * 0.45; vctx.stroke();
+    }
+    // 이름표 (머리 위)
+    if (p[J.Head * 2] >= 0) {
+      const name = s.label.textContent, pending = s.label.classList.contains('pending');
+      vctx.font = `600 ${13 * dpr}px "Segoe UI", "Malgun Gothic", sans-serif`;
+      const tw = vctx.measureText(name).width, ph = 24 * dpr, pw = tw + 20 * dpr;
+      const x = sx(p[J.Head * 2]) - pw / 2, y = sy(p[J.Head * 2 + 1]) - 85 * unit - ph;
+      vctx.fillStyle = pending ? '#3a4252' : col;
+      vctx.beginPath(); vctx.roundRect(x, y, pw, ph, ph / 2); vctx.fill();
+      vctx.fillStyle = pending ? '#8a93a3' : '#0b0e13';
+      vctx.textAlign = 'center'; vctx.textBaseline = 'middle';
+      vctx.fillText(name, x + pw / 2, y + ph / 2 + 0.5);
+    }
+  }
+}
+
+// ───────── 아바타 (분할 화면 왼쪽, 뒤에서 보기) ─────────
+// 외부 모델 파일 없이 관절 위치로 만드는 가벼운 마네킹.
+// 팔·다리는 끝이 가늘어지는 원통 + 관절 구, 몸통·손·발은 납작하게. 어깨 너비로 체형 크기를 맞춤.
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const avatarScene = new THREE.Scene();
+avatarScene.background = new THREE.Color(0x10141b);
+avatarScene.fog = new THREE.Fog(0x10141b, 7, 18);
+const avatarCam = new THREE.PerspectiveCamera(40, 1, 0.05, 60);
+avatarCam.position.set(0, 0.5, -5.4);
+avatarScene.add(new THREE.HemisphereLight(0xe8eeff, 0x1c222c, 1.25));
+const aSun = new THREE.DirectionalLight(0xffffff, 2.2);       // 뒤쪽 위에서 → 등이 잘 보이게
+aSun.castShadow = true;
+aSun.shadow.mapSize.set(1024, 1024);
+Object.assign(aSun.shadow.camera, { left: -2.5, right: 2.5, top: 2.5, bottom: -2.5, near: 0.5, far: 14 });
+aSun.shadow.normalBias = 0.02;
+const aRim = new THREE.DirectionalLight(0x9fc4ff, 0.9);      // 앞쪽에서 윤곽광
+avatarScene.add(aSun, aSun.target, aRim, aRim.target);
+const aGround = new THREE.Mesh(new THREE.CircleGeometry(14, 64), new THREE.MeshStandardMaterial({ color: 0x19202a, roughness: 1 }));
+aGround.rotation.x = -Math.PI / 2;
+aGround.receiveShadow = true;
+const aGrid = new THREE.GridHelper(28, 56, 0x2d3544, 0x1f2631);
+avatarScene.add(aGround, aGrid);
+let aFloor = null, aSize = 1, camDist = 4.6;
+const camFocus = new THREE.Vector3(0, -0.1, -2.5);
+const avatarLabelsEl = document.getElementById('avatarLabels');
+
+// [시작 관절, 끝 관절, 시작 반지름, 끝 반지름, 앞뒤 두께 비율, 납작한 방향('fwd' 앞뒤 | 'up' 위아래)]
+const AV_PARTS = [
+  // 다리
+  [J.HipLeft, J.KneeLeft, .085, .062, 1], [J.KneeLeft, J.AnkleLeft, .058, .042, 1],
+  [J.HipRight, J.KneeRight, .085, .062, 1], [J.KneeRight, J.AnkleRight, .058, .042, 1],
+  [J.AnkleLeft, J.FootLeft, .046, .036, .55, 'up'], [J.AnkleRight, J.FootRight, .046, .036, .55, 'up'],
+  // 몸통
+  [J.Pelvis, J.SpineNavel, .135, .125, .64], [J.SpineNavel, J.SpineChest, .125, .15, .6],
+  [J.SpineChest, J.Neck, .15, .08, .58], [J.HipRight, J.HipLeft, .092, .092, .78],
+  [J.ShoulderRight, J.ShoulderLeft, .066, .066, .75], [J.Neck, J.Head, .048, .046, 1],
+  // 팔
+  [J.ShoulderLeft, J.ElbowLeft, .052, .042, 1], [J.ElbowLeft, J.WristLeft, .042, .031, 1],
+  [J.ShoulderRight, J.ElbowRight, .052, .042, 1], [J.ElbowRight, J.WristRight, .042, .031, 1],
+  [J.WristLeft, J.HandTipLeft, .031, .024, .45], [J.WristRight, J.HandTipRight, .031, .024, .45],
+];
+const AV_BALLS = [
+  [J.HipLeft, .088], [J.HipRight, .088], [J.KneeLeft, .062], [J.KneeRight, .062],
+  [J.AnkleLeft, .045], [J.AnkleRight, .045], [J.FootLeft, .036], [J.FootRight, .036],
+  [J.ShoulderLeft, .062], [J.ShoulderRight, .062], [J.ElbowLeft, .044], [J.ElbowRight, .044],
+  [J.WristLeft, .032], [J.WristRight, .032], [J.HandTipLeft, .024], [J.HandTipRight, .024],
+];
+// 몸통 관절: 앞뒤로 납작한 타원 (허리·가슴 이음매를 매끄럽게)  [관절, 반지름, 앞뒤 비율]
+const AV_TORSO_BALLS = [[J.Pelvis, .13, .66], [J.SpineNavel, .125, .62], [J.SpineChest, .148, .6]];
+const cylCache = new Map();
+const unitSphere = new THREE.SphereGeometry(1, 24, 16);
+function taperedCylinder(r0, r1) {
+  const key = r0 + '_' + r1;
+  if (!cylCache.has(key)) cylCache.set(key, new THREE.CylinderGeometry(r1, r0, 1, 20, 1, false)); // 위(+Y)가 끝 관절
+  return cylCache.get(key);
+}
+const _x = new THREE.Vector3(), _y = new THREE.Vector3(), _z = new THREE.Vector3(), _m = new THREE.Matrix4();
+const _fwd = new THREE.Vector3(), _up = new THREE.Vector3(), _r = new THREE.Vector3();
+
+class Avatar {
+  constructor() {
+    this.group = new THREE.Group();
+    this.bodyMat = new THREE.MeshStandardMaterial({ color: 0xd8dde5, roughness: .55, metalness: .05 });
+    this.jointMat = new THREE.MeshStandardMaterial({ color: 0xb9c0cb, roughness: .5, metalness: .05 });
+    this.pos = Array.from({ length: 32 }, () => new THREE.Vector3());
+    this.init = false;
+    this.size = 1;
+    const mk = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.castShadow = true; this.group.add(m); return m; };
+    this.parts = AV_PARTS.map(([a, b, r0, r1, depth, flat]) => ({ a, b, depth, flat, mesh: mk(taperedCylinder(r0, r1), this.bodyMat) }));
+    this.balls = AV_BALLS.map(([j, r]) => ({ j, r, mesh: mk(unitSphere, this.jointMat) }));
+    this.torsoBalls = AV_TORSO_BALLS.map(([j, r, depth]) => ({ j, r, depth, mesh: mk(unitSphere, this.bodyMat) }));
+    this.head = mk(unitSphere, this.bodyMat);
+    this.label = document.createElement('div');
+    this.label.className = 'tag pending';
+    avatarLabelsEl.appendChild(this.label);
+    avatarScene.add(this.group);
+  }
+
+  setPerson(p, color) {
+    // 사람 색을 살짝 섞은 마네킹 색
+    this.bodyMat.color.set(0xd8dde5).lerp(color, p ? 0.32 : 0.1);
+    this.jointMat.color.copy(this.bodyMat.color).multiplyScalar(0.82);
+    this.label.textContent = p ? p.name : '확인 중…';
+    this.label.className = p ? 'tag' : 'tag pending';
+    this.label.style.background = p ? '#' + color.getHexString() : '';
+  }
+
+  update(s, k) {
+    for (let i = 0; i < 32; i++) {
+      if (!this.init) this.pos[i].copy(s.raw[i]);
+      else this.pos[i].lerp(s.raw[i], k);
+    }
+    this.init = true;
+    const P = this.pos, ok = i => s.conf[i] > 0;
+
+    // 체형 크기: 어깨 너비 기준 (어른 약 0.34m)
+    if (ok(J.ShoulderLeft) && ok(J.ShoulderRight)) {
+      const target = THREE.MathUtils.clamp(P[J.ShoulderLeft].distanceTo(P[J.ShoulderRight]) / 0.34, 0.72, 1.3);
+      this.size += (target - this.size) * 0.05;
+    }
+    const sz = this.size;
+
+    // 몸의 앞쪽 방향 = (오른쪽→왼쪽 엉덩이) × (위쪽 척추)
+    _up.subVectors(P[J.SpineChest], P[J.Pelvis]).normalize();
+    _r.subVectors(P[J.HipLeft], P[J.HipRight]);
+    _fwd.crossVectors(_r, _up);
+    if (_fwd.lengthSq() < 1e-6) _fwd.set(0, 0, 1); else _fwd.normalize();
+
+    for (const part of this.parts) {
+      const m = part.mesh;
+      m.visible = ok(part.a) && ok(part.b);
+      if (!m.visible) continue;
+      const a = P[part.a], b = P[part.b];
+      _y.subVectors(b, a);
+      const len = _y.length();
+      if (len < 1e-4) { m.visible = false; continue; }
+      _y.divideScalar(len);
+      // 납작하게 만들 방향을 몸 앞쪽(또는 위쪽)에 맞춤
+      const ref = part.flat === 'up' ? _up : _fwd;
+      _z.copy(ref).addScaledVector(_y, -ref.dot(_y));
+      if (_z.lengthSq() < 1e-6) _z.set(_y.y, -_y.x, 0);
+      _z.normalize();
+      _x.crossVectors(_y, _z);
+      _m.makeBasis(_x, _y, _z);
+      m.quaternion.setFromRotationMatrix(_m);
+      m.position.copy(a).addScaledVector(_y, len / 2);
+      m.scale.set(sz, len, part.depth * sz);
+    }
+    for (const ball of this.balls) {
+      ball.mesh.visible = ok(ball.j);
+      ball.mesh.position.copy(P[ball.j]);
+      ball.mesh.scale.setScalar(ball.r * sz);
+    }
+    // 몸통 타원: 몸의 앞쪽 방향으로 납작하게
+    _y.copy(_up);
+    _z.copy(_fwd).addScaledVector(_y, -_fwd.dot(_y)).normalize();
+    _x.crossVectors(_y, _z);
+    _m.makeBasis(_x, _y, _z);
+    for (const tb of this.torsoBalls) {
+      tb.mesh.visible = ok(tb.j);
+      tb.mesh.position.copy(P[tb.j]);
+      tb.mesh.quaternion.setFromRotationMatrix(_m);
+      tb.mesh.scale.set(tb.r * sz, tb.r * sz * 0.9, tb.r * tb.depth * sz);
+    }
+    // 머리: 목→머리 방향으로 살짝 긴 타원
+    this.head.visible = ok(J.Head);
+    if (this.head.visible) {
+      _y.subVectors(P[J.Head], P[J.Neck]).normalize();
+      _z.copy(_fwd).addScaledVector(_y, -_fwd.dot(_y)).normalize();
+      _x.crossVectors(_y, _z);
+      _m.makeBasis(_x, _y, _z);
+      this.head.quaternion.setFromRotationMatrix(_m);
+      this.head.position.copy(P[J.Head]).addScaledVector(_y, 0.02 * sz);
+      this.head.scale.set(0.092 * sz, 0.112 * sz, 0.102 * sz);
+    }
+  }
+
+  placeLabel(w, h) {
+    const v = this.pos[J.Head].clone();
+    v.y += 0.26 * this.size;
+    v.project(avatarCam);
+    const show = v.z < 1 && this.init;
+    this.label.style.display = show ? '' : 'none';
+    if (!show) return;
+    this.label.style.left = ((v.x + 1) / 2 * w) + 'px';
+    this.label.style.top = ((1 - v.y) / 2 * h) + 'px';
+  }
+
+  dispose() {
+    avatarScene.remove(this.group);
+    this.bodyMat.dispose();
+    this.jointMat.dispose();
+    this.label.remove();
+  }
+}
+
+function updateAvatars(k, dt) {
+  let minFoot = Infinity, n = 0;
+  const center = new THREE.Vector3();
+  let sizeSum = 0, minX = Infinity, maxX = -Infinity;
+  for (const s of skeletons.values()) {
+    if (!s.avatar) { s.avatar = new Avatar(); s.avatar.setPerson(personById(s.pid), s.color); }
+    s.avatar.update(s, k);
+    for (const f of [J.FootLeft, J.FootRight, J.AnkleLeft, J.AnkleRight])
+      if (s.conf[f] >= 1) minFoot = Math.min(minFoot, s.avatar.pos[f].y - (f === J.AnkleLeft || f === J.AnkleRight ? 0.07 : 0.035));
+    // 카메라는 보이는 사람들의 가운데를 따라감
+    const pel = s.avatar.pos[J.Pelvis];
+    center.add(pel); n++; sizeSum += s.avatar.size;
+    minX = Math.min(minX, pel.x); maxX = Math.max(maxX, pel.x);
+  }
+  if (minFoot !== Infinity) {
+    aFloor = aFloor === null ? minFoot : aFloor + (minFoot - aFloor) * Math.min(1, dt * (minFoot < aFloor ? 3 : 0.15));
+    aGround.position.y = aFloor;
+    aGrid.position.y = aFloor + 0.002;
+  }
+
+  // 뒤에서 보는 카메라: 사람은 센서(+Z) 쪽을 보고 있으므로 카메라는 사람 뒤(-Z)에 둠
+  if (n) {
+    center.divideScalar(n);
+    const want = new THREE.Vector3(center.x, aFloor !== null ? aFloor + 0.95 : center.y, center.z);
+    camFocus.lerp(want, Math.min(1, dt * 2.5));
+    // 여러 명이면 양쪽 끝 사람까지 들어오도록 멀리
+    const spread = (maxX - minX) / 2;
+    const wantDist = 4.6 * (sizeSum / n) + spread * 2.4;
+    aSize += (sizeSum / n - aSize) * Math.min(1, dt * 2);
+    camDist += (wantDist - camDist) * Math.min(1, dt * 2);
+  }
+  avatarCam.position.set(camFocus.x, camFocus.y + 0.75 * aSize + (camDist - 4.6) * 0.12, camFocus.z - camDist);
+  avatarCam.lookAt(camFocus.x, camFocus.y - 0.05, camFocus.z);
+  aSun.position.set(camFocus.x - 1.6, camFocus.y + 4.2, camFocus.z - 2.6);
+  aSun.target.position.copy(camFocus);
+  aRim.position.set(camFocus.x + 1.2, camFocus.y + 1.6, camFocus.z + 3);
+  aRim.target.position.copy(camFocus);
+
+  const w = avatarLabelsEl.clientWidth, h = avatarLabelsEl.clientHeight;
+  for (const s of skeletons.values()) s.avatar.placeLabel(w, h);
+}
+
+// ───────── 렌더 루프 ─────────
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.1);
+  // 떨림은 데이터를 받을 때 One Euro 필터로 처리. 여기서는 30fps 데이터를 화면 주사율에 맞게 이어 주기만 함
+  const k = 1 - Math.pow(0.3, dt * 60);
+  if (sourceRunning && !cameraUp && performance.now() - cameraInfoAt > 5000) { cameraInfoAt = performance.now(); renderTiltInfo(); }
+
+  let minFoot = Infinity;
+  for (const s of skeletons.values()) {
+    s.update(k, ui.face.checked);
+    s.placeLabel();
+    for (const f of [J.FootLeft, J.FootRight, J.AnkleLeft, J.AnkleRight])
+      if (s.conf[f] >= 1) minFoot = Math.min(minFoot, s.pos[f].y);
+  }
+
+  // 바닥 높이 추정 (발이 보일 때만, 천천히 따라감)
+  if (minFoot !== Infinity) {
+    const est = minFoot - 0.03;
+    floorY = floorY === null ? est : floorY + (est - floorY) * Math.min(1, dt * (est < floorY ? 3 : 0.15));
+    grid.position.y = floorY;
+  }
+
+  // 사람 따라가기
+  const first = skeletons.values().next().value;
+  if (ui.follow.checked && first) {
+    const p = first.pos[J.Pelvis];
+    const delta = new THREE.Vector3(p.x, p.y, p.z).sub(controls.target).multiplyScalar(Math.min(1, dt * 3));
+    controls.target.add(delta);
+    camera.position.add(delta);
+  }
+
+  // 카메라 모형은 시점이 가까우면 숨김 (기본 시점에선 다리를 가리기 때문)
+  sensor.visible = camera.position.length() > 1.6;
+
+  const searching = sourceRunning && performance.now() - lastBodySeen > 1200;
+  $('hint').style.opacity = searching ? 1 : 0;
+
+  if (viewMode === 'video') { drawVideo(k); return; }
+  if (viewMode === 'split') {
+    drawVideo(k);
+    updateAvatars(k, dt);
+    renderer.render(avatarScene, avatarCam);
+    return;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+function resizeAll() {
+  const view = $('view');
+  const w = view.clientWidth || innerWidth, h = view.clientHeight || innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  avatarCam.aspect = w / h;
+  avatarCam.updateProjectionMatrix();
+}
+addEventListener('resize', resizeAll);
+
+setMode(viewMode);
+connect();
+animate();
+</script>
+</body>
+</html>

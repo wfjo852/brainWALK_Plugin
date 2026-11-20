@@ -16,7 +16,12 @@
 //  sound.preload([...문장])                  에이전트 음성을 미리 만들어 둠 (명령이 늦지 않게)
 // ─────────────────────────────────────────────────────────────
 export class Sound {
+  static all = new Set();
+  /** 어느 화면의 Sound 든 지금 말하는 중인지 (배경음악을 줄일 때) */
+  static speaking() { for (const s of Sound.all) if (s.voiceOn && s.playing) return true; return false; }
+
   constructor() {
+    Sound.all.add(this);
     this.voiceOn = true;
     this.fxOn = true;
     this.voice = null;          // 브라우저 한국어 음성

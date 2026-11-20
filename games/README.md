@@ -16,7 +16,9 @@ games/
 │   ├─ throw.js         던지기 동작 알아채기 (손이 몸 앞쪽으로 빠르게)
 │   ├─ hand-pointer.js  손 커서: 손을 들어 .hand-target 버튼 위에 머무르면 선택 (마우스 대신)
 │   ├─ sound.js         음성 안내(웹 음성 → 에이전트 Windows 음성 /tts → 브라우저 음성 자동 선택) + 효과음
+│   ├─ bgm.js           배경음악 (GameShell 이 자동으로 켬, 음성 안내 중엔 작게, 라이선스 문구 표시)
 │   └─ ui.css           공통 스타일
+├─ _bgm/               배경음악 mp3 + tracks.json (곡 목록·게임 고르기 화면 곡·라이선스 문구)
 ├─ flag/               청기백기
 ├─ smash/              사진 깨기 (사진에 던져서 깨기: index.html, game.js, board.js, photos.js)
 └─ bead/               구슬 꿰기 (날아오는 구슬 가운데를 손으로 그어 꿰기, 그림자뷰)

@@ -21,8 +21,10 @@
 //  - 게임 다시 시작: onHome 호출 (이 게임의 첫 화면으로. 게임 중이면 멈추고)
 //  - 스켈레톤  : 보이기/숨기기 (settings.skeleton)
 //  - 게임 나가기: 게임 고르기 화면으로
+//  - 배경음악: bgm 옵션 (기본 'random' = 게임 화면, 'lobby' = 게임 고르기 화면, false = 없음). bgm.js 참고
 //  - 게임은 화면을 헤더·푸터 사이에 배치: CSS 변수 var(--shell-top), var(--shell-bottom)
 // ─────────────────────────────────────────────────────────────
+import { Bgm } from './bgm.js';
 
 const KEY = 'femto.common';
 export const MAX_PLAYERS = 4;
@@ -58,8 +60,9 @@ export class GameShell {
    *   게임 화면 기본      ['home', 'skeleton', 'exit']  게임 다시 시작 · 스켈레톤 · 게임 나가기
    *   게임 고르기 화면    ['skeleton', 'quit']          스켈레톤 · 게임 종료(프로그램 끄기)
    * name 이 없으면 헤더 없음 (게임 고르기 화면)
+   * bgm    : 배경음악 'random'(게임 화면 기본) · 'lobby'(게임 고르기 화면) · 곡 id · false(없음)
    */
-  constructor({ name = null, icon = '', sim = 0, onHome = null, buttons = ['home', 'skeleton', 'exit'] } = {}) {
+  constructor({ name = null, icon = '', sim = 0, onHome = null, buttons = ['home', 'skeleton', 'exit'], bgm = 'random' } = {}) {
     this.sim = sim;
     this.onHome = onHome;
     this.onChange = null;
@@ -97,6 +100,7 @@ export class GameShell {
     on('exit', () => setTimeout(() => (location.href = this.exitUrl), 300));
     on('quit', () => this.confirmQuit());
     this.render();
+    this.bgm = bgm ? new Bgm(bgm) : null;
   }
 
   /** 게임 종료: 한 번 더 물어본 뒤 에이전트에 종료 요청 (게임 창을 닫고 에이전트도 꺼짐) */

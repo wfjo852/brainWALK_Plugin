@@ -91,6 +91,10 @@ html.has-shell.no-shell-head { --shell-top: 0px; }
 .shell-foot button small { font-size: var(--type-caption); font-weight: 700; color: var(--muted); }
 .shell-foot button.on { border-color: var(--ok); }
 .shell-foot button.on small { color: var(--ok); }
+/* 배경음악 라이선스 문구 (bgm.js): 푸터 바로 위 가운데에 작게 */
+.bgm-credit { position: fixed; left: 50%; bottom: calc(var(--shell-bottom) + 4px); translate: -50% 0; z-index: 39; max-width: calc(100% - 2 * var(--gutter));
+  padding: .15em .7em; border-radius: 999px; background: rgba(11, 19, 28, .55); color: var(--muted); opacity: .75;
+  font-size: clamp(0.625rem, 0.58rem + 0.25vmin, 0.75rem); line-height: 1.4; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 /* 인원 선택 (시작 전 화면, 제목 밑) */
 .shell-players { margin: 6px 0 14px; }
 .shell-players label { display: block; margin-bottom: 10px; color: var(--muted); font-size: var(--type-label); font-weight: 700; }

@@ -12,31 +12,56 @@
     background: radial-gradient(ellipse at 12% 0%, #22435bbf, transparent 60%), linear-gradient(#0b131cc9, #0b131ce8); }
 
   main { position: fixed; inset: 0 0 var(--shell-bottom); overflow: auto; display: flex; flex-direction: column; padding: var(--gutter); }
-  .lobby { width: min(100%, 78rem); margin: auto; display: grid; gap: clamp(12px, 2.6vmin, 32px); }
+  .lobby { width: 100%; margin: auto; display: grid; gap: clamp(12px, 2.6vmin, 32px); }
+  .lobby > header, .lobby-foot { width: min(100%, 78rem); margin-inline: auto; }
+  .lobby-foot { justify-items: center; text-align: center; }
   h1 { margin: 0; font-size: clamp(1.85rem, 1.25rem + 5vmin, 5.25rem); line-height: 1.15; letter-spacing: -.065em; word-break: keep-all; }
   .how { margin: .55em 0 0; font-size: var(--type-lead); color: var(--muted); word-break: keep-all; }
   .how b { color: var(--text); }
 
-  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gutter); }
-  .card { --accent: #a5c8ff; --art-bg: #20385b; min-width: 0;
+  /* ───── 가로 카루셀: 가운데 카드 = 고를 게임, 양옆 = 미리보기 ───── */
+  .carousel { --card-w: min(32rem, 40vw); --step: calc(var(--card-w) * .88);
+    position: relative; height: clamp(280px, 46dvh, 600px); overflow-x: clip; }
+  .card { --accent: #a5c8ff; --art-bg: #20385b; --off: 0; --s: 1;
+    position: absolute; left: 50%; top: 0; width: var(--card-w); height: 100%;
+    transform: translateX(calc(-50% + var(--off) * var(--step))) scale(var(--s));
+    transition: transform .45s cubic-bezier(.2, .8, .2, 1), opacity .35s, filter .35s, outline-color .15s;
     display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius);
     background: var(--panel); border: 1px solid var(--line); box-shadow: 0 16px 35px #04090e59;
     color: var(--text); text-decoration: none; }
   .card[data-game="smash"] { --accent: #ffca9f; --art-bg: #4c2c32; }
   .card:hover { border-color: var(--accent); }
+  .card.side { opacity: .5; filter: saturate(.6); z-index: 1; }
+  .card.center { z-index: 2; border-color: var(--accent); box-shadow: 0 22px 50px #04090e8c, 0 0 0 1px var(--accent); }
+  .card.away { opacity: 0; visibility: hidden; pointer-events: none; }
+  .card.jump { transition: none; }
+  .card.side .tags, .card.side .arrow { visibility: hidden; }
+  .card.hand-picked { transform: translateX(calc(-50% + var(--off) * var(--step))) scale(calc(var(--s) * .96)); }
+
+  .nav { position: absolute; top: 50%; z-index: 3; translate: 0 -50%;
+    width: clamp(72px, 13vmin, 150px); aspect-ratio: 1; border-radius: 50%;
+    display: grid; place-items: center; font-size: clamp(2rem, 1rem + 5vmin, 4.5rem); line-height: 1;
+    background: color-mix(in srgb, var(--surface) 88%, transparent); border: 2px solid var(--line);
+    box-shadow: 0 12px 30px #04090e80; }
+  .nav:hover { border-color: var(--text); }
+  .nav.prev { left: var(--gutter); }
+  .nav.next { right: var(--gutter); }
+  .dots { display: flex; justify-content: center; gap: .6em; }
+  .dots i { width: .7em; height: .7em; border-radius: 999px; background: var(--line); transition: width .3s, background .3s; }
+  .dots i.on { width: 2.2em; background: var(--ok); }
   .art { position: relative; isolation: isolate; overflow: hidden; display: grid; place-items: center;
-    min-height: clamp(92px, 22dvh, 245px); background:
+    flex: 1; min-height: 0; background:
       radial-gradient(ellipse, color-mix(in srgb, var(--accent) 26%, var(--art-bg)), transparent 72%),
       repeating-linear-gradient(-32deg, transparent 0 22px, #ffffff0c 23px 24px), var(--art-bg); }
   .art::before { content: ""; position: absolute; width: 35%; aspect-ratio: 1; border: 1px solid #ffffff33;
     border-radius: 50%; box-shadow: 0 0 0 1.3em #ffffff0c, 0 0 0 2.6em #ffffff09; z-index: -1; }
   .art span { font-size: clamp(2.75rem, 1.3rem + 10vmin, 8rem); line-height: 1; filter: drop-shadow(0 9px 12px #0b131c8c); }
-  .card-body { padding: var(--panel-pad); display: flex; flex-direction: column; flex: 1; gap: .55em; }
+  .card-body { padding: var(--panel-pad); display: flex; flex-direction: column; gap: .55em; }
   .card .title { display: flex; align-items: center; justify-content: space-between; gap: .4em;
     font-size: var(--type-title); font-weight: 900; letter-spacing: -.045em; line-height: 1.15; }
   .card .arrow { color: var(--accent); }
   .card .desc { margin: 0; font-size: var(--type-label); color: var(--muted); word-break: keep-all; }
-  .card .tags { margin-top: auto; padding-top: .35em; display: flex; gap: .4em; flex-wrap: wrap; }
+  .card .tags { padding-top: .35em; display: flex; gap: .4em; flex-wrap: wrap; }
   .card .tags span { padding: .25em .75em; border: 1px solid var(--line); border-radius: 999px; font-size: var(--type-small); color: var(--accent); }
 
   #playersPick { margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: .55em 1em; }
@@ -49,13 +74,13 @@
   .lobby-foot { display: grid; gap: .3em; }
   .admin { font-size: var(--type-caption); color: var(--muted); }
   .admin a { color: inherit; text-underline-offset: .2em; }
-  #soundBlocked { justify-self: start; border: 1px solid var(--warn); padding: .5em .8em; border-radius: 10px;
+  #soundBlocked { justify-self: center; border: 1px solid var(--warn); padding: .5em .8em; border-radius: 10px;
     background: var(--panel); color: var(--warn); font-size: var(--type-small); font-weight: 700; }
-  @media (max-width: 560px) {
-    .cards { grid-template-columns: 1fr; }
-    .card { display: grid; grid-template-columns: minmax(78px, 27%) 1fr; }
-    .art { min-height: 104px; }
-    .art::before { width: 72%; }
+  header { text-align: center; }
+  #playersPick { justify-content: center; }
+  @media (max-width: 720px) {
+    .carousel { --card-w: 70vw; --step: calc(var(--card-w) * .8); }
+    .nav { width: 56px; font-size: 1.6rem; }
     .card-body { padding: .85em; }
   }
 </style>
@@ -68,10 +93,15 @@
   <div class="lobby">
     <header>
       <h1>어떤 운동을 할까요?</h1>
-      <p class="how">✋ <b>손을 들어</b> 하고 싶은 카드 위에 <b>잠시 올려 두세요</b></p>
+      <p class="how">✋ <b>손을 들어</b> ◀ ▶ 에 올리면 넘어가고, <b>가운데 카드</b>에 잠시 올려 두면 시작해요</p>
     </header>
     <div id="playersPick"></div>
-    <div class="cards" id="cards"></div>
+    <div class="carousel">
+      <div id="cards"></div>
+      <button class="nav prev hand-target" data-dwell="0.8" aria-label="이전 게임">◀</button>
+      <button class="nav next hand-target" data-dwell="0.8" aria-label="다음 게임">▶</button>
+    </div>
+    <div class="dots" id="dots" aria-hidden="true"></div>
     <div class="lobby-foot">
       <div id="status"></div>
       <div class="admin">관리자: <a href="../">뷰어</a> · 카메라 없이 시험 <span id="simLinks"></span></div>
@@ -101,6 +131,12 @@ const GAMES = [
     tags: ['여럿이 함께', '팔 운동', '스트레스 풀기'],
     say: '사진 깨기',
   },
+  {
+    folder: 'bead', icon: '📿', title: '구슬 꿰기',
+    desc: '날아오는 구슬 가운데를<br>손으로 휙! 그으면 실에 꿰어져요.',
+    tags: ['여럿이 함께', '팔 휘두르기', '순발력'],
+    say: '구슬 꿰기',
+  },
 ];
 
 const params = new URLSearchParams(location.search);
@@ -108,7 +144,7 @@ const SIM = Math.max(0, Math.min(4, parseInt(params.get('sim') || '0', 10) || 0)
 const simQuery = SIM ? `?sim=${SIM}` : '';
 
 document.getElementById('cards').innerHTML = GAMES.map(g => `
-  <a class="card hand-target" href="${g.folder}/${simQuery}" data-game="${g.folder}" data-say="${g.say}">
+  <a class="card" href="${g.folder}/${simQuery}" data-game="${g.folder}" data-say="${g.say}">
     <div class="art" aria-hidden="true">${g.folder === 'flag' ? '<span class="flag-mark"></span>' : `<span>${g.icon}</span>`}</div>
     <div class="card-body">
       <div class="title">${g.title}<span class="arrow" aria-hidden="true">↗</span></div>
@@ -116,6 +152,52 @@ document.getElementById('cards').innerHTML = GAMES.map(g => `
       <div class="tags">${g.tags.map(t => `<span>${t}</span>`).join('')}</div>
     </div>
   </a>`).join('');
+// ───── 카루셀: cur = 가운데 카드 번호. 양옆으로 한 장씩 보이고, 끝에서 처음으로 이어짐 ─────
+const cards = [...document.querySelectorAll('.card')];
+const N = cards.length;
+let cur = 0;
+document.getElementById('dots').innerHTML = cards.map(() => '<i></i>').join('');
+const dots = [...document.querySelectorAll('#dots i')];
+document.querySelectorAll('.nav').forEach(b => b.classList.toggle('hidden', N < 2));
+
+function offsetOf(i) {          // 가운데로부터 몇 칸 (왼쪽 -, 오른쪽 +)
+  let d = ((i - cur) % N + N) % N;
+  if (d > N / 2) d -= N;
+  return d;
+}
+function layout() {
+  cards.forEach((c, i) => {
+    const off = offsetOf(i);
+    const prev = parseFloat(c.style.getPropertyValue('--off') || off);
+    c.classList.toggle('jump', Math.abs(off - prev) > 1);   // 반대편으로 넘어가는 카드는 순간이동
+    c.style.setProperty('--off', off);
+    c.style.setProperty('--s', off === 0 ? 1 : 0.8);
+    c.classList.toggle('center', off === 0);
+    c.classList.toggle('side', Math.abs(off) === 1);
+    c.classList.toggle('away', Math.abs(off) > 1);
+    c.classList.toggle('hand-target', Math.abs(off) <= 1);   // 옆 카드에 손을 올려도 그쪽으로 넘어감
+    c.tabIndex = off === 0 ? 0 : -1;
+  });
+  dots.forEach((d, i) => d.classList.toggle('on', i === cur));
+}
+function go(step) {
+  if (N < 2) return;
+  cur = ((cur + step) % N + N) % N;
+  layout();
+  sound.tick();
+  sound.say(cards[cur].dataset.say, 0.95);   // 가운데로 온 게임 이름 읽어 주기
+}
+document.querySelector('.nav.prev').onclick = () => go(-1);
+document.querySelector('.nav.next').onclick = () => go(+1);
+// 키보드 (관리자용): ← → 넘기기, Enter 시작
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') go(-1);
+  else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') go(+1);
+  else if (e.key === 'Enter') cards[cur].click();
+  else return;
+  e.preventDefault(); e.stopPropagation();   // 손 커서의 기본 화살표 이동은 쓰지 않음
+});
+
 document.getElementById('simLinks').innerHTML = [1, 2, 3, 4].map(n => `<a href="?sim=${n}">${n}명</a>`).join(' ');
 
 const client = new FemtoClient({ sim: SIM });
@@ -124,12 +206,19 @@ const stage = new Stage(document.getElementById('stage'), client, { character: '
 const shell = new GameShell({ sim: SIM, buttons: ['skeleton', 'quit'] });
 shell.playersPicker(document.getElementById('playersPick'));
 const sound = new Sound();
-const pointer = new HandPointer({ client, onSelect: el => { sound.success(); sound.say(`${el.dataset.say ?? ''} 시작할게요`, 0.9); } });
-// 선택 후 음성이 조금 들리도록 잠깐 뒤에 이동
-for (const a of document.querySelectorAll('.card')) a.addEventListener('click', e => {
+const pointer = new HandPointer({ client });   // 소리는 아래 click 에서 (손·마우스·키보드 똑같이)
+layout();
+// 가운데 카드 = 시작, 옆 카드 = 그쪽으로 넘기기
+let starting = false;
+cards.forEach((a, i) => a.addEventListener('click', e => {
   e.preventDefault();
-  setTimeout(() => (location.href = a.getAttribute('href')), 700);
-});
+  if (starting) return;
+  const off = offsetOf(i);
+  if (off !== 0) { go(off); return; }
+  starting = true;
+  sound.success(); sound.say(`${a.dataset.say} 시작할게요`, 0.9);
+  setTimeout(() => (location.href = a.getAttribute('href')), 700);   // 선택 후 음성이 조금 들리도록 잠깐 뒤에 이동
+}));
 
 // 소리가 막혀 있으면 (브라우저가 화면을 한 번 누르기 전까지 소리를 막는 경우) 안내
 function checkSound() {
@@ -150,8 +239,14 @@ function loop(now) {
   if (!client.connected || client.status.state === 'error') { st.textContent = '⚠ 카메라 프로그램에 연결 중이에요…'; st.className = ''; }
   else if (n === 0) { st.textContent = '카메라 앞에 서 주세요'; st.className = ''; }
   else if (!pointer.visible) { st.textContent = '손을 가슴 높이로 들어 보세요'; st.className = 'ok'; }
-  else { st.textContent = pointer.target ? '그대로 잠시 기다리세요…' : '고르고 싶은 카드 위로 손을 옮기세요'; st.className = 'ok'; }
-  if (!greeted && n > 0) { greeted = true; sound.say('안녕하세요! 손을 들어서 하고 싶은 운동을 골라 주세요.', 0.9); }
+  else {
+    const t = pointer.target;
+    st.textContent = !t ? '◀ ▶ 로 넘기거나, 가운데 카드에 손을 올리세요'
+      : t.classList.contains('center') ? '그대로 잠시 기다리면 시작해요…'
+      : '그대로 두면 넘어가요…';
+    st.className = 'ok';
+  }
+  if (!greeted && n > 0) { greeted = true; sound.say('안녕하세요! 손을 옆으로 옮겨서 넘겨 보고, 가운데 운동에 손을 올려 골라 주세요.', 0.9); }
 }
 requestAnimationFrame(loop);
 setTimeout(checkSound, 1500);

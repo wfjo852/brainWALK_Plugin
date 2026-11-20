@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>구슬 꿰기</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="../_shared/ui.css">
+<style>
+  /* 화면: 공통 틀(헤더·푸터) 사이 전체가 무대. 사람 = 그림자(그림자뷰), 그 위에 구슬·효과·실 */
+  :root { --game-accent: #9bd3ff; }
+  #stage, #fx { position: fixed; left: 0; right: 0; top: var(--shell-top); bottom: var(--shell-bottom); width: 100%; height: calc(100dvh - var(--shell-top) - var(--shell-bottom)); }
+  #fx { pointer-events: none; z-index: 5; }
+
+  /* 게임 중 위쪽 가운데: 남은 시간 · 안내 (작게, 무대를 가리지 않게) */
+  #hud { position: fixed; left: 50%; top: calc(var(--shell-top) + 10px); transform: translateX(-50%); z-index: 8; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; text-align: center; max-width: calc(100vw - 2 * var(--gutter)); }
+  #timer { padding: .15em .7em; border-radius: 999px; background: rgba(5,10,20,.7); border: 1px solid var(--line); font-size: var(--type-heading); font-weight: 900; font-variant-numeric: tabular-nums; }
+  #timer.low { color: var(--warn); border-color: var(--warn); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .55; } }
+  #msg { padding: .2em .7em; border-radius: 12px; background: rgba(5,10,20,.55); font-size: var(--type-label); font-weight: 800; color: var(--game-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  #msg:empty { display: none; }
+  #count { position: fixed; inset: var(--shell-top) 0 var(--shell-bottom); z-index: 9; display: grid; place-items: center; pointer-events: none;
+    font-size: clamp(5rem, 22dvh, 14rem); font-weight: 900; color: var(--warn); text-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+  /* 1. 설정 */
+  .big { display: flex; gap: 14px; flex-wrap: wrap; }
+  .big button { min-width: 96px; padding: 12px 22px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface); font-size: var(--type-control); font-weight: 800; color: var(--text); }
+  .big button.on { background: var(--game-accent); color: var(--bg); border-color: var(--game-accent); }
+  .big button small { display: block; font-size: var(--type-small); font-weight: 600; opacity: .75; margin-top: 2px; }
+  #setup { position: fixed; left: 50%; top: calc((100dvh + var(--shell-top) - var(--shell-bottom)) / 2); transform: translate(-50%, -50%); width: min(980px, calc(100vw - 32px)); max-height: calc(100dvh - var(--shell-top) - var(--shell-bottom) - 24px); overflow: auto; padding: var(--panel-pad); z-index: 12; box-sizing: border-box; }
+  #setup h1 { margin: 0; font-size: var(--type-display); }
+  #setup .lead { margin: 4px 0 12px; color: var(--muted); font-size: var(--type-label); }
+  .rules { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 10px 0 6px; }
+  .rules div { padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,.06); font-size: var(--type-body); color: var(--muted); line-height: 1.4; }
+  .rules b { display: block; font-size: var(--type-heading); color: var(--text); margin-bottom: 2px; }
+  #setup label.t { display: block; font-size: var(--type-body); font-weight: 800; color: var(--muted); margin: 14px 0 8px; }
+  #start { margin-top: 16px; width: 100%; padding: .55em; font-size: var(--type-heading); font-weight: 900; border-radius: 14px; border: 0; background: var(--ok); color: var(--bg); }
+  #start:disabled { opacity: .5; cursor: default; }
+  #seen { margin: 10px 0 0; font-size: var(--type-body); color: var(--muted); }
+  #seen.warn { color: var(--warn); }
+
+  /* 3. 결과 */
+  #results { position: fixed; left: 50%; top: calc((100dvh + var(--shell-top) - var(--shell-bottom)) / 2); transform: translate(-50%, -50%); width: min(860px, calc(100vw - 32px)); max-height: calc(100dvh - var(--shell-top) - var(--shell-bottom) - 24px); overflow: auto; padding: var(--panel-pad); z-index: 12; box-sizing: border-box; text-align: center; }
+  #results h2 { margin: 0; font-size: var(--type-display); }
+  #praise { font-size: var(--type-control); color: var(--ok); font-weight: 800; margin: 4px 0 16px; }
+  #ranking { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; text-align: left; }
+  .rk { display: grid; grid-template-columns: 4.2em minmax(0, 1fr) auto; align-items: center; column-gap: 14px; padding: 10px 18px; border-radius: 16px; background: rgba(255,255,255,.06); border-left: 10px solid var(--c); font-size: var(--type-label); }
+  .rk.first { background: rgba(252,196,25,.14); }
+  .rk .pos { font-size: 1.5em; font-weight: 900; text-align: center; }
+  .rk .nm { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rk .cnt b { font-size: 1.5em; font-variant-numeric: tabular-nums; }
+  .rk .etc { grid-column: 2 / 4; color: var(--muted); font-size: .8em; }
+  #results .big { justify-content: center; }
+
+  #pointerHint { position: fixed; left: 50%; bottom: calc(var(--shell-bottom) + 10px); transform: translateX(-50%); font-size: var(--type-body); color: var(--muted); z-index: 13; pointer-events: none; }
+  #soundBlocked { position: fixed; right: 16px; bottom: calc(var(--shell-bottom) + 14px); padding: .5em .75em; border-radius: 12px; background: var(--warn); color: #1a1406; font-weight: 700; z-index: 30; cursor: pointer; }
+  @media (max-width: 700px) { .rules { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>   <!-- 배경 + 사람 그림자 (그림자뷰) -->
+<canvas id="fx"></canvas>      <!-- 구슬 · 폭탄 · 손 자국 · 효과 · 실 -->
+
+<div id="hud" class="hidden">
+  <div id="timer">1:00</div>
+  <div id="msg"></div>
+</div>
+<div id="count" class="hidden"></div>
+
+<!-- 1. 설정 (시작 전 화면: 제목 · 소제목) -->
+<section id="setup" class="panel">
+  <h1>📿 구슬 꿰기</h1>
+  <p class="lead">날아오는 구슬의 <b>가운데 구멍</b>을 손으로 <b>휙!</b> 그으면 내 실에 꿰어져요.</p>
+  <div class="rules">
+    <div><b>🔵 꿰기</b>구슬 가운데를 손으로 빠르게 지나가면 꿰어져요</div>
+    <div><b>💣 피하기</b>폭탄에 손이 닿으면 꿴 구슬을 <b style="display:inline;font-size:inherit">3개</b> 잃어요</div>
+    <div><b>🏆 등수</b>시간이 끝났을 때 구슬을 가장 많이 꿴 사람이 1등</div>
+  </div>
+  <label class="t" id="timeLabel">시간</label>
+  <div class="big" id="optTime" role="group" aria-labelledby="timeLabel">
+    <button class="hand-target" data-v="60">1분</button><button class="hand-target" data-v="120">2분</button><button class="hand-target" data-v="180">3분</button>
+  </div>
+  <button id="start" class="hand-target">시작하기 ▶</button>
+  <div id="seen">카메라 연결 중…</div>
+</section>
+
+<!-- 3. 결과 -->
+<section id="results" class="panel hidden">
+  <h2>🎉 다 끝났어요!</h2>
+  <div id="praise"></div>
+  <div id="ranking"></div>
+  <div class="big">
+    <button class="hand-target" id="again">🔁 다시 하기</button>
+  </div>
+</section>
+
+<div id="pointerHint" class="hidden">✋ 손을 들어 버튼 위에 잠시 올려 두세요</div>
+<div id="soundBlocked" class="hidden">🔇 소리를 켜려면 화면을 한 번 눌러 주세요</div>
+
+<script type="module" src="game.js"></script>
+</body>
+</html>

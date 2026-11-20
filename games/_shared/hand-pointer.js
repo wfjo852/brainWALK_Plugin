@@ -13,6 +13,8 @@
 //    고정   : 버튼 위에서 손이 멈춤         → 테두리 인디케이터가 차오름    (커서에 .locked)
 //             다 차면(dwell 초) 클릭 이벤트. 그사이 손이 크게 움직이면 인디케이터는 처음부터
 //
+//    버튼마다 data-dwell="0.8" 처럼 따로 줄 수 있음 (넘기기 버튼처럼 자주 누르는 것은 짧게)
+//
 //  const pointer = new HandPointer({ client, mirror: true, dwell: 1.5, onSelect: el => sound.tick() });
 //  매 프레임: pointer.update(dt)
 // ─────────────────────────────────────────────────────────────
@@ -140,11 +142,12 @@ export class HandPointer {
       locked = this.still >= this.settle && this.cooldown === 0;
     }
     if (locked) {
-      this.progress += dt / this.dwell;
+      const dwell = parseFloat(hit.dataset.dwell) || this.dwell;
+      this.progress += dt / dwell;
       if (this.progress >= 1) {
         // 인디케이터가 다 참 → 클릭
         this.progress = 0;
-        this.cooldown = 1.5;
+        this.cooldown = Math.min(1.5, dwell);
         this.still = 0;
         hit.classList.add('hand-picked');
         setTimeout(() => hit.classList.remove('hand-picked'), 400);

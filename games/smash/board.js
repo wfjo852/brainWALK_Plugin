@@ -6,6 +6,7 @@
 //  - 다 상한 조각은 떨어져 나감 (조각 그림을 따로 떼어 game.js에서 떨어뜨림)
 //  - 맞은 곳에 이미 조각이 없으면 가장 가까운 남은 조각 쪽으로 맞혀 줌 (매번 뭔가 깨지게)
 //  - 남은 양이 12% 아래면 남은 조각을 한꺼번에 와장창
+//  - 🎯 표적: pickTarget() 으로 남은 곳 중 무작위 자리, 맞히면 blast() 로 주변 조각이 한꺼번에 폭발
 // ─────────────────────────────────────────────────────────────
 export const FINISH_AT = 0.12;
 
@@ -50,13 +51,14 @@ export class PhotoBoard {
   get remain() { return this.left / this.total; }
   get done() { return this.remain <= FINISH_AT; }
 
-  /** 이 위치(0~1)에 맞으면 실제로 맞을 곳 (빈 곳이면 가장 가까운 남은 조각) */
-  aimPoint(u, v) {
+  /** 이 위치(0~1)에 맞으면 실제로 맞을 곳 (빈 곳이면 가장 가까운 남은 조각)
+   *  pull: 남은 조각들 가운데 쪽으로 끌어당기는 정도 (표적이 있을 땐 0 → 던진 곳 그대로) */
+  aimPoint(u, v, { pull = 0.2 } = {}) {
     let x = u * this.W, y = v * this.H;
     // 남은 조각들 가운데 쪽으로 살짝 끌어당김 (구석만 남아 오래 걸리지 않게)
     let mx = 0, my = 0, ma = 0;
     for (const p of this.pieces) if (p.alive) { mx += p.cx * p.area; my += p.cy * p.area; ma += p.area; }
-    if (ma) { x += (mx / ma - x) * 0.2; y += (my / ma - y) * 0.2; }
+    if (ma && pull) { x += (mx / ma - x) * pull; y += (my / ma - y) * pull; }
     const R = this.radius(0.5);
     let near = null, nd = Infinity;
     for (const p of this.pieces) {
@@ -95,6 +97,40 @@ export class PhotoBoard {
     }
     if (nearest) nearest.hp = Math.min(nearest.hp, 0);
     for (const p of this.pieces) if (p.alive && p.hp <= 0) out.push(this.detach(p));
+    return out;
+  }
+
+  // ───────── 🎯 표적 ─────────
+  /** 표적 동그라미 반지름 (사진 픽셀) */
+  get targetRadius() { return 0.065 * this.diag; }
+
+  /**
+   * 표적 자리 고르기: 남은 조각 중 무작위.
+   * 가장자리는 피하고(맞히기 어려움), 지난 표적과는 떨어진 곳. 없으면 남은 아무 조각
+   */
+  pickTarget(prev = null) {
+    const alive = this.pieces.filter(p => p.alive);
+    if (!alive.length) return null;
+    const mx = this.W * 0.14, my = this.H * 0.14, far = this.diag * 0.22;
+    const inner = alive.filter(p => p.cx > mx && p.cx < this.W - mx && p.cy > my && p.cy < this.H - my);
+    let pool = (inner.length ? inner : alive).filter(p => !prev || Math.hypot(p.cx - prev.x, p.cy - prev.y) > far);
+    if (!pool.length) pool = inner.length ? inner : alive;
+    const p = pool[Math.floor(Math.random() * pool.length)];
+    return { x: p.cx, y: p.cy, r: this.targetRadius };
+  }
+
+  /** 폭발: 반지름 R 안의 남은 조각을 한꺼번에 떼어냄 (가운데는 그을린 자국) */
+  blast(x, y, R) {
+    const g = this.g;
+    g.save();
+    g.globalCompositeOperation = 'source-atop';
+    const rg = g.createRadialGradient(x, y, 0, x, y, R * 1.25);
+    rg.addColorStop(0, 'rgba(40,20,0,.75)'); rg.addColorStop(0.6, 'rgba(90,40,0,.35)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = rg;
+    g.beginPath(); g.arc(x, y, R * 1.25, 0, Math.PI * 2); g.fill();
+    g.restore();
+    const out = [];
+    for (const p of this.pieces) if (p.alive && Math.hypot(p.cx - x, p.cy - y) < R) out.push(this.detach(p));
     return out;
   }
 

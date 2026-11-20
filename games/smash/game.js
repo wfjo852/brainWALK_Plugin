@@ -36,6 +36,23 @@ const OBJECTS = {
   egg: { icon: '🥚', name: '달걀', words: ['퍽!', '철썩!'] },
 };
 
+// 🎯 표적: 사진 위 무작위 자리에 동그라미. 맞히면 폭발 → 잠시 뒤 다른 자리에 새 표적
+//   랭킹: 표적을 많이 맞힌 순 → 같으면 적게 던진 순 → 같으면 마지막 표적을 빨리 맞힌 순
+const TARGET = {
+  firstDelay: 0.8,     // 사진이 나오고 첫 표적까지 (초)
+  nextDelay: 1.2,      // 맞힌 뒤 다음 표적까지 (초)
+  hitSlack: 1.25,      // 동그라미 반지름의 이만큼 안에 맞으면 명중 (어르신용으로 넉넉히)
+  blast: 2.6,          // 폭발 반지름 = 동그라미 반지름 × 이만큼
+};
+
+// 사진을 다 깼을 때 뒤 벽에 나오는 말 (무작위, 바로 전과 다른 것)
+const WALL_TEXTS = ['😊 후련해요!', '🎉 속이 시원해요!', '💥 스트레스 날려버렸어요!', '😆 기분이 상쾌해요!', '🌈 마음이 가벼워졌어요!', '💪 힘이 넘쳐요!', '👏 정말 잘하셨어요!'];
+let lastWallText = '';
+function pickWallText() {
+  const pool = WALL_TEXTS.filter(t => t !== lastWallText);
+  return (lastWallText = pool[Math.floor(Math.random() * pool.length)]);
+}
+
 const client = new FemtoClient({ sim: SIM });   // 그림자뷰: 영상은 안 보이지만 사람 모양(마스크)이 영상과 함께 옴
 const people = new Stage($('people'), client, { character: 'shadow' });
 const sound = new Sound();
@@ -242,7 +259,7 @@ function setPhase(p) {
   show('setup', p === 'setup');
   show('guide', p === 'play' || p === 'done');
   show('results', p === 'results');
-  show('cardsL', p !== 'setup'); show('cardsR', p !== 'setup');
+  show('cardsL', p !== 'setup');   // 점수 카드는 띠 왼쪽에 2×2로 모두
   show('queueBar', p === 'play' || p === 'done');
   show('qrMini', qrReady && p !== 'setup');   // 게임 중에도 QR로 사진 계속 받기
   if (p === 'setup') refreshGallery();
@@ -270,7 +287,8 @@ async function startGame() {
   joinPlayers();
   const now = performance.now() / 1000;
   game = { t0: now, throws: 0, best: 0, lastThrow: now, lastHint: now, said: new Set(), finishedAt: 0,
-           queue: [...list], idx: -1, cleared: 0, nextAt: 0, fresh: new Set(), lastObj: null };
+           queue: [...list], idx: -1, cleared: 0, nextAt: 0, fresh: new Set(), lastObj: null,
+           target: null, targetAt: 0, prevTarget: null, wallText: null, targetsHit: 0 };
   if (!await loadPhoto(0)) return;
   setPhase('play');
   setMsg('팔을 뒤로 했다가 앞으로 휙! 💪', list.length > 1 ? '한 장 다 깨면 다음 사진이 나와요' :'사진을 향해 공을 던지듯이');
@@ -287,6 +305,8 @@ async function loadPhoto(i) {
       boardImg = img;
       board = new PhotoBoard(boardImg);
       g.idx = i; g.nextAt = 0; g.said.clear();
+      g.target = null; g.prevTarget = null; g.wallText = null;
+      g.targetAt = performance.now() / 1000 + TARGET.firstDelay;
       projectiles.length = frags.length = particles.length = pops.length = rings.length = 0;
       updateMeter(); renderQueue();
       return true;
@@ -305,11 +325,11 @@ function renderQueue() {
   const key = rest.map(p => p.id).join(',');
   if (key === queueKey) return;
   queueKey = key;
-  const MAX = 12;
+  const MAX = 5;   // 띠 오른쪽에 작게: 다음 사진 몇 장만 (나머지는 +N)
   $('queueList').innerHTML = rest.length
     ? rest.slice(0, MAX).map((p, k) => `<div class="q${game.fresh.has(p.id) ? ' new' : ''}" style="background-image:url(${p.thumb})"><i>${game.idx + 2 + k}</i>${p.from ? `<span>📱 ${esc(p.from)}</span>` : ''}</div>`).join('')
       + (rest.length > MAX ? `<div class="more">+${rest.length - MAX}</div>` : '')
-    : `<div class="empty">${qrReady ? '대기 중인 사진이 없어요 · 오른쪽 위 QR로 휴대폰 사진을 보내면 여기에 줄을 서요 📱' : '이 사진이 마지막이에요'}</div>`;
+    : `<div class="empty">${qrReady ? '없음 · QR로 보내면<br>여기에 줄을 서요 📱' : '마지막 사진'}</div>`;
   game.fresh.clear();
 }
 
@@ -336,12 +356,12 @@ function layout() {
   if (fx.width !== Math.round(fr.width * dpr) || fx.height !== Math.round(fr.height * dpr)) {
     fx.width = Math.round(fr.width * dpr); fx.height = Math.round(fr.height * dpr);
   }
-  // 사진판: 아래 칸 전체의 가운데 (사람 모습은 보이지 않음)
-  const areaX = Math.min(20, fr.width * 0.04), areaY = Math.min(16, fr.height * 0.05);
+  // 사진판: 아래 칸을 거의 꽉 채움 (여백 최소)
+  const areaX = Math.min(8, fr.width * 0.01), areaY = Math.min(6, fr.height * 0.01);
   const areaW = fr.width - 2 * areaX, areaH = fr.height - 2 * areaY;
   let b = null;
   if (board) {
-    const s = Math.min(areaW * 0.96 / board.W, areaH * 0.94 / board.H);
+    const s = Math.min(areaW / board.W, areaH / board.H);
     const w = board.W * s, h = board.H * s;
     b = { x: areaX + (areaW - w) / 2, y: areaY + (areaH - h) / 2, w, h, s };
   }
@@ -362,6 +382,8 @@ function joinPlayers() {
   for (const b of fresh) {
     const p = new Player(players.length, b, client);
     p.throws = 0;
+    p.hits = 0;              // 🎯 맞힌 표적 수
+    p.lastHitAt = Infinity;  // 마지막 표적을 맞힌 때 (게임 시작부터 초) — 동률일 때 빠른 사람이 앞
     players.push(p);
   }
 }
@@ -377,7 +399,7 @@ function launch({ body, handJoint, power, aim }) {
   const objKey = keys[Math.floor(Math.random() * keys.length)];
   game.lastObj = objKey;
   if (SIM) (window.__objs ??= {})[objKey] = (window.__objs[objKey] || 0) + 1;
-  const target = board.aimPoint(aim.nx, aim.ny);
+  const target = board.aimPoint(aim.nx, aim.ny, { pull: game.target ? 0 : 0.2 });   // 표적이 있으면 던진 곳 그대로
   // 출발: 화면 아래 가장자리, 던진 사람이 서 있는 쪽 (거울처럼: 오른쪽에 선 사람 = 화면 오른쪽)
   let fx0 = 0.5;
   if (body) {
@@ -387,7 +409,7 @@ function launch({ body, handJoint, power, aim }) {
   const from = { x: fx0 * L.W, y: L.H + 40 };
   const to = toFx(target.x, target.y);
   const color = pl ? pl.color : '#ffd23f';
-  projectiles.push({ from, to, t0: now, dur: 0.55 - power * 0.12, obj: objKey, power, color, tx: target.x, ty: target.y, spin: (Math.random() - 0.5) * 14 });
+  projectiles.push({ from, to, t0: now, dur: 0.55 - power * 0.12, obj: objKey, power, color, pl, tx: target.x, ty: target.y, spin: (Math.random() - 0.5) * 14 });
   game.throws++;
   game.best = Math.max(game.best, power);
   game.lastThrow = now;
@@ -397,10 +419,62 @@ function launch({ body, handJoint, power, aim }) {
 
 function testThrow() {
   const body = players.find(p => p.present)?.body;
-  launch({ body, handJoint: J.HandRight, power: 0.6, aim: { nx: 0.3 + Math.random() * 0.4, ny: 0.3 + Math.random() * 0.4 } });
+  // 시험: 표적이 있으면 반은 표적 쪽으로
+  const t = game.target && Math.random() < 0.5 ? { nx: game.target.x / board.W, ny: game.target.y / board.H } : { nx: 0.3 + Math.random() * 0.4, ny: 0.3 + Math.random() * 0.4 };
+  launch({ body, handJoint: J.HandRight, power: 0.6, aim: t });
+}
+
+/** 새 표적 동그라미 (지난 자리와 떨어진 곳) */
+function spawnTarget() {
+  const t = board.pickTarget(game.prevTarget);
+  if (!t) return;
+  game.target = { ...t, t0: performance.now() / 1000 };
+  sfx.ping();
+}
+
+/** 🎯 명중: 주변이 한꺼번에 폭발, 던진 사람 점수 +1 */
+function targetHit(p) {
+  const tg = game.target, now = performance.now() / 1000;
+  game.prevTarget = tg; game.target = null; game.targetAt = now + TARGET.nextDelay;
+  game.targetsHit++;
+  if (p.pl) { p.pl.hits++; p.pl.lastHitAt = now - game.t0; }
+
+  const pieces = board.blast(tg.x, tg.y, tg.r * TARGET.blast);
+  const at = toFx(tg.x, tg.y), s = L.board.s;
+  for (const f of pieces) {
+    const c = toFx(f.cx, f.cy);
+    let dx = c.x - at.x, dy = c.y - at.y;
+    const d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d;
+    const sp = 380 + Math.random() * 520;
+    frags.push({ f, x: c.x, y: c.y, vx: dx * sp, vy: dy * sp - 220 - Math.random() * 200, a: 0, va: (Math.random() - 0.5) * 12, s, life: 0 });
+  }
+  // 불꽃
+  const fire = ['#fff3b0', '#ffd23f', '#ff922b', '#ff5d5d', p.color];
+  for (let i = 0; i < 90; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 160 + Math.random() * 720;
+    particles.push({ x: at.x, y: at.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 140, r: 3 + Math.random() * 8, c: fire[i % fire.length], life: 0, max: 0.6 + Math.random() * 0.7 });
+  }
+  for (let k = 0; k < 3; k++) rings.push({ x: at.x, y: at.y, color: k === 1 ? '#ffd23f' : p.color, t0: now + k * 0.08, big: 1.6 + k * 0.4 });
+  pops.push({ x: at.x, y: at.y, color: p.color, text: '💥 펑!', t0: now, big: 1.6 });
+  shake = 0.7;
+  sfx.explode();
+  sfx.shatter(Math.min(20, pieces.length + 6));
+
+  const who = p.pl ? p.pl.name : '';
+  setMsg(`🎯 명중!${who ? ` ${who}` : ''}`, p.pl ? `${who} 🎯 ${p.pl.hits}개` : null);
+  $('msg').classList.remove('pulse'); void $('msg').offsetWidth; $('msg').classList.add('pulse');
+  sound.say(who ? `명중! ${who}` : '명중!', 1);
 }
 
 function impact(p) {
+  // 🎯 표적 안에 맞으면 폭발
+  const tg = game.target;
+  if (tg && Math.hypot(p.tx - tg.x, p.ty - tg.y) <= tg.r * TARGET.hitSlack) {
+    targetHit(p);
+    updateMeter();
+    if (board.done) finale();
+    return;
+  }
   const pieces = board.hit(p.tx, p.ty, p.power, p.obj);
   const at = toFx(p.tx, p.ty), s = L.board.s;
   for (const f of pieces) {
@@ -433,6 +507,8 @@ function impact(p) {
 function finale() {
   if (phase !== 'play') return;
   game.cleared++;
+  game.target = null;
+  game.wallText = pickWallText();   // 다 깬 뒤 벽에 나오는 말 (무작위)
   const more = game.idx + 1 < game.queue.length;
   if (!more) setPhase('done');
   const center = toFx(board.W / 2, board.H / 2);
@@ -470,6 +546,8 @@ async function nextPhoto() {
   sound.say(`${game.idx + 1}번째 사진이에요`, 0.95);
 }
 
+const fmtTime = sec => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+
 function showResults() {
   setPhase('results');
   const sec = Math.round(game.finishedAt - game.t0);
@@ -477,8 +555,17 @@ function showResults() {
   $('rThrows').textContent = game.throws;
   $('rTime').textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
   $('rPower').textContent = Math.round(game.best * 100) + '%';
-  $('praise').textContent = game.throws <= 20 ? '힘이 대단하세요! 💪' : '끝까지 잘하셨어요! 👏';
-  $('who').innerHTML = players.filter(s => s.throws).map(s => `<span style="--c:${s.color}">${esc(s.name)} <b>${s.throws}</b>번</span>`).join('');
+  const rank = ranking();
+  const top = rank[0];
+  $('praise').textContent = top?.hits ? `🏆 ${top.name}님이 🎯 ${top.hits}개로 1등!` : (game.throws <= 20 ? '힘이 대단하세요! 💪' : '끝까지 잘하셨어요! 👏');
+  // 랭킹: 같은 등수 판단은 정렬과 같은 기준 (맞힌 수 → 던진 수 → 마지막 명중 시각)
+  $('who').innerHTML = rank.map((p, i) => {
+    const medal = ['🥇', '🥈', '🥉'][i] ?? `${i + 1}등`;
+    const when = p.hits ? ` · 마지막 명중 ${fmtTime(p.lastHitAt)}` : '';
+    return `<div class="rk${i === 0 ? ' first' : ''}" style="--c:${p.color}"><span class="pos">${medal}</span><span class="nm">${esc(p.name)}</span>`
+      + `<span class="hits">🎯 <b>${p.hits}</b>개</span><span class="thr">던진 횟수 ${p.throws}번${when}</span></div>`;
+  }).join('');
+  if (top?.hits) sound.say(`${top.name}님이 1등이에요!`, 0.95);
 }
 
 // ───────── 매 프레임 ─────────
@@ -493,6 +580,7 @@ function frame(nowMs) {
   if (phase === 'play') {
     for (const t of det.update(client.bodies, now)) launch({ body: client.bodies.get(t.bodyId), ...t });
     const here = client.bodies.size > 0;
+    if (!game.nextAt && board && !board.done && !game.target && now >= game.targetAt) spawnTarget();   // 🎯 새 표적
     if (game.nextAt) { if (now >= game.nextAt) nextPhoto(); }   // 다음 사진 기다리는 중
     else if (!here) setMsg('카메라 앞에 서 주세요 🙂', '사진이 기다리고 있어요');
     else if (now - game.lastThrow > 9 && now - game.lastHint > 15) {
@@ -551,11 +639,14 @@ function draw(now) {
   g.addColorStop(0, '#20324a'); g.addColorStop(1, '#2c4a3c');
   c.fillStyle = g; c.fill();
   c.clip();
-  c.globalAlpha = 0.9;
-  c.fillStyle = '#ffffff';
-  c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.font = `900 ${Math.max(1, Math.round(Math.min(b.h * 0.16, b.w * 0.14)))}px "Malgun Gothic", sans-serif`;
-  c.fillText('😊 후련해요!', b.x + b.w / 2, b.y + b.h / 2, b.w * 0.9);
+  // 다 깼을 때만: 무작위 말 (게임 중에는 빈 벽)
+  if (board.done && game?.wallText) {
+    c.globalAlpha = 0.95;
+    c.fillStyle = '#ffffff';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = `900 ${Math.max(1, Math.round(Math.min(b.h * 0.16, b.w * 0.12)))}px "Malgun Gothic", sans-serif`;
+    c.fillText(game.wallText, b.x + b.w / 2, b.y + b.h / 2, b.w * 0.9);
+  }
   c.restore();
 
   // 사진판
@@ -565,6 +656,9 @@ function draw(now) {
   // 참가자만 그림자 (최대 인원 밖의 사람은 안 보임). 스켈레톤은 공통 설정
   people.draw({ players, mirror: true, others: false, skeleton: settings.skeleton, background: null });
   c.drawImage(people.canvas, 0, 0, L.W, L.H);
+
+  // 🎯 표적 동그라미 (그림자 위, 효과 아래)
+  if (game?.target && phase === 'play') drawTarget(c, game.target, now, sx, sy);
 
   // 떨어지는 조각
   for (const f of frags) {
@@ -585,6 +679,7 @@ function draw(now) {
   for (let i = rings.length - 1; i >= 0; i--) {
     const r = rings[i], k = (now - r.t0) / 0.6;
     if (k >= 1) { rings.splice(i, 1); continue; }
+    if (k < 0) continue;   // 폭발 고리: 조금 늦게 시작하는 것
     c.save();
     c.globalAlpha = 1 - k;
     c.strokeStyle = r.color; c.lineWidth = 10 * (1 - k) + 2;
@@ -646,6 +741,39 @@ function draw(now) {
   }
 }
 
+/** 🎯 표적: 빨강·흰 과녁 + 숨 쉬듯 커졌다 작아지는 바깥 고리 (나타날 때 톡 튀어나옴) */
+function drawTarget(c, tg, now, sx, sy) {
+  const { x, y } = toFx(tg.x, tg.y), R = tg.r * L.board.s;
+  const age = now - tg.t0;
+  const pop = age < 0.35 ? 0.4 + 0.6 * Math.sin(age / 0.35 * Math.PI / 2) * 1.08 : 1;
+  const breathe = 1 + 0.06 * Math.sin(now * 5);
+  const r = R * pop;
+  c.save();
+  c.translate(x + sx, y + sy);
+  // 바깥 빛 고리 (어디 있는지 눈에 띄게)
+  c.globalAlpha = 0.55 + 0.25 * Math.sin(now * 5);
+  c.strokeStyle = '#ffd23f'; c.lineWidth = Math.max(4, R * 0.1);
+  c.shadowColor = '#ffd23f'; c.shadowBlur = 24;
+  c.beginPath(); c.arc(0, 0, r * 1.18 * breathe, 0, Math.PI * 2); c.stroke();
+  c.shadowBlur = 0;
+  // 과녁
+  c.globalAlpha = 0.88;
+  for (const [k, col] of [[1, '#e03131'], [0.72, '#ffffff'], [0.45, '#e03131'], [0.2, '#ffffff']]) {
+    c.fillStyle = col;
+    c.beginPath(); c.arc(0, 0, r * k, 0, Math.PI * 2); c.fill();
+  }
+  c.globalAlpha = 1;
+  c.lineWidth = Math.max(2, R * 0.04); c.strokeStyle = 'rgba(0,0,0,.45)';
+  c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.stroke();
+  c.restore();
+}
+
+/** 랭킹: 🎯 많이 맞힌 순 → 적게 던진 순 → 마지막 표적을 빨리 맞힌 순 */
+function ranking() {
+  return players.filter(p => p.throws > 0 || p.hits > 0).sort((a, b) =>
+    (b.hits - a.hits) || (a.throws - b.throws) || (a.lastHitAt - b.lastHitAt) || (a.index - b.index));
+}
+
 /** 공: 던진 사람 색 공 + 흰 실밥 + 반짝임 */
 function drawBall(c, r, color) {
   c.shadowColor = color; c.shadowBlur = 24;
@@ -681,13 +809,11 @@ let cardsKey = '';
 function renderCards() {
   if (phase === 'setup') return;
   const list = players;
-  const key = list.map(s => s.name + s.throws + s.color + s.present).join('|');
+  const key = list.map(s => s.name + s.throws + s.hits + s.color + s.present).join('|');
   if (key === cardsKey) return;
   cardsKey = key;
-  const html = s => `<div class="card panel${s.present ? '' : ' away'}" style="--c:${s.color}"><div class="n">${esc(s.name)}</div><div class="s">${s.throws}<small>번</small></div></div>`;
-  const half = Math.ceil(list.length / 2);
-  $('cardsL').innerHTML = list.slice(0, half).map(html).join('');
-  $('cardsR').innerHTML = list.slice(half).map(html).join('');
+  const html = s => `<div class="card panel${s.present ? '' : ' away'}" style="--c:${s.color}"><div class="n">${esc(s.name)}</div><div class="s">🎯${s.hits}<small>${s.throws}번</small></div></div>`;
+  $('cardsL').innerHTML = list.map(html).join('');
 }
 
 function updateSeen() {
@@ -730,6 +856,14 @@ const sfx = {
       o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
     } catch { /* 무시 */ }
   },
+  // 🎯 표적 나타남: 맑은 "띵"
+  ping() { try { sound.tone([880, 1320], 0.12, 'sine', 0.12); } catch { /* 무시 */ } },
+  // 🎯 명중 폭발: 낮게 울리는 쾅 + 넓게 퍼지는 소리
+  explode() {
+    this.burst({ dur: 0.7, type: 'lowpass', f0: 1600, f1: 60, q: 0.7, gain: 0.8 });
+    this.thump(70, 0.55, 0.7);
+    setTimeout(() => this.burst({ dur: 0.4, type: 'highpass', f0: 3000, f1: 1200, gain: 0.25 }), 60);
+  },
   whoosh(p) { this.burst({ dur: 0.28, type: 'bandpass', f0: 400, f1: 1800, q: 1.2, gain: 0.12 + p * 0.1 }); },
   impact(obj, p) {
     if (obj === 'ball') { this.burst({ dur: 0.12, type: 'highpass', f0: 2500, gain: 0.35 }); this.thump(120, 0.2, 0.35 + p * 0.2); }
@@ -759,7 +893,8 @@ if (SIM) {
     }, 1400);
   }
   window.__smash = () => ({ phase, throws: game?.throws ?? 0, remain: board?.remain ?? 1, flying: projectiles.length, frags: frags.length,
-    photo: game ? game.idx + 1 : 0, total: game?.queue.length ?? 0, cleared: game?.cleared ?? 0, waiting: $('queueCount').textContent, objs: window.__objs });
+    photo: game ? game.idx + 1 : 0, total: game?.queue.length ?? 0, cleared: game?.cleared ?? 0, waiting: $('queueCount').textContent, objs: window.__objs,
+    target: !!game?.target, targetsHit: game?.targetsHit ?? 0, ranking: ranking().map(p => [p.name, p.hits, p.throws]) });
   window.__smashStart = () => startGame();
 }
 setPhase('setup');

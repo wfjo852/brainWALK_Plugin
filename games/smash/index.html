@@ -127,13 +127,48 @@
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
   .stats div { padding: 14px; border-radius: 16px; background: rgba(255,255,255,.06); font-size: var(--type-body); color: var(--muted); }
   .stats b { display: block; font-size: var(--type-title); color: var(--text); font-variant-numeric: tabular-nums; }
-  #who { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; font-size: var(--type-label); margin-bottom: 18px; }
-  #who span { padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,.07); border-left: 8px solid var(--c); }
+  /* 🎯 랭킹: 많이 맞힌 순 → 적게 던진 순 → 마지막 명중이 빠른 순 */
+  #who { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; text-align: left; }
+  #who .rk { display: grid; grid-template-columns: 4.2em minmax(0, 1fr) auto; align-items: center; column-gap: 14px; padding: 10px 18px;
+    border-radius: 16px; background: rgba(255,255,255,.06); border-left: 10px solid var(--c); font-size: var(--type-label); }
+  #who .rk.first { background: rgba(252,196,25,.14); }
+  #who .pos { font-size: 1.5em; font-weight: 900; text-align: center; }
+  #who .nm { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #who .hits b { font-size: 1.4em; font-variant-numeric: tabular-nums; }
+  #who .thr { grid-column: 2 / 4; color: var(--muted); font-size: .8em; }
   #results .big { justify-content: center; }
   #results .big button { font-size: var(--type-control); padding: 18px 26px; }
 
   #pointerHint { position: fixed; inset: auto var(--gutter) calc(var(--shell-bottom) + 8px); width: fit-content; margin-inline: auto; padding: .35em .65em; border-radius: 10px; background: var(--bg); text-align: center; pointer-events: none; font-size: var(--type-body); color: var(--muted); z-index: 13; }
   #soundBlocked { position: fixed; right: 16px; bottom: calc(var(--shell-bottom) + 14px); max-width: calc(100% - 32px); padding: .5em .75em; border-radius: 12px; background: var(--warn); color: #1a1406; font-weight: 700; z-index: 30; cursor: pointer; }
+
+  /* ───────── 게임 중: 사진을 최대한 크게 ─────────
+     안내 띠 하나(얇게)에 모두: 왼쪽 = 점수 카드 2×2, 가운데 = 안내 한 줄·깨진 정도, 오른쪽 = 다음 사진·QR
+     (다음 사진 줄은 따로 두지 않음 → --qbar: 0) */
+  :root { --head: clamp(64px, 9dvh, 100px); --qbar: 0px; --head-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr); }
+  #headband { --head-padding: 6px 12px; --head-gap: 12px; }
+  #headband .side.left .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 4px; height: 100%; max-width: none; }
+  #headband .side.left .cards .card { padding: 0 .5em 0 .7em; border-radius: 8px; min-height: 0; }
+  #headband .cards .card .n { font-size: var(--type-caption); }
+  #headband .cards .card .s { font-size: var(--type-label); white-space: nowrap; }
+  #headband .cards .card .s small { font-size: var(--type-caption); }
+  #guide { padding: 4px 12px; }
+  #guide .msg { font-size: clamp(1rem, 3.4dvh, 2.2rem); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-wrap: nowrap; }
+  #guide .sub { margin-top: 0; font-size: var(--type-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #guide .meter { margin-top: .2em; font-size: var(--type-caption); }
+  #guide .meter .bar { height: 8px; }
+  #headband .side.right { gap: 10px; align-items: center; }
+  #queueBar { position: static; height: 100%; padding: 0; background: none; border: 0; gap: 6px; min-width: 0; flex: 1; justify-content: flex-end; }
+  #queueBar .lbl { font-size: var(--type-caption); line-height: 1.2; text-align: center; }
+  #queueBar .lbl b { font-size: var(--type-label); }
+  #queueList { gap: 4px; }
+  #queueList .q { height: calc(var(--head) - 20px); border-radius: 6px; }
+  #queueList .q i { min-width: 16px; height: 16px; font-size: 11px; line-height: 16px; border-radius: 8px; }
+  #queueList .q span { display: none; }
+  #queueList .empty { font-size: var(--type-caption); white-space: nowrap; }
+  #qrMini { gap: 2px; }
+  #qrMini img { height: calc(var(--head) - 30px); }
+  #qrMini span { font-size: var(--type-caption); }
 
   @media (max-width: 800px) {
     :root { --head: clamp(136px, 27dvh, 220px); }
@@ -173,16 +208,15 @@
     </section>
   </div>
   <div class="side right">
-    <div class="cards" id="cardsR"></div>
+    <div class="cards hidden" id="cardsR"></div>
+    <!-- 대기 중인 사진 (게임 중에도 QR로 계속 추가됨) — 띠 오른쪽에 작게 -->
+    <div id="queueBar" class="hidden">
+      <div class="lbl">⏭ 다음 <b id="queueCount">0</b>장</div>
+      <div id="queueList"></div>
+    </div>
     <div id="qrMini" class="hidden"><img id="qrMiniImg" alt="사진 보내기 QR 코드"><span>📱 사진 보내기</span></div>
   </div>
 </header>
-
-<!-- 게임 화면 상단: 대기 중인 사진 (게임 중에도 QR로 계속 추가됨) -->
-<div id="queueBar" class="hidden">
-  <div class="lbl">⏭ 다음 사진 <b id="queueCount">0</b>장</div>
-  <div id="queueList"></div>
-</div>
 
 <!-- 1. 설정 -->
 <section id="setup" class="panel">

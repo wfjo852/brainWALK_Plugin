@@ -18,7 +18,8 @@ games/
 │   ├─ sound.js         음성 안내(웹 음성 → 에이전트 Windows 음성 /tts → 브라우저 음성 자동 선택) + 효과음
 │   └─ ui.css           공통 스타일
 ├─ flag/               청기백기
-└─ smash/              사진 깨기 (사진에 던져서 깨기: index.html, game.js, board.js, photos.js)
+├─ smash/              사진 깨기 (사진에 던져서 깨기: index.html, game.js, board.js, photos.js)
+└─ bead/               구슬 꿰기 (날아오는 구슬 가운데를 손으로 그어 꿰기, 그림자뷰)
     ├─ index.html       화면
     ├─ game.js          진행·판정·점수·등수
     └─ commands.js      명령 만들기 (난이도 단계)

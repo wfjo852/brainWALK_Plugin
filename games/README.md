@@ -21,6 +21,7 @@ games/
 ├─ _bgm/               배경음악 mp3 + tracks.json (곡 목록·게임 고르기 화면 곡·라이선스 문구)
 ├─ flag/               청기백기
 ├─ smash/              사진 깨기 (사진에 던져서 깨기: index.html, game.js, board.js, photos.js)
+├─ wall/               벽 구멍 통과 (두 손으로 공을 잡고 높이를 맞춰 벽 구멍에 통과, 그림자뷰)
 └─ bead/               구슬 꿰기 (날아오는 구슬 가운데를 손으로 그어 꿰기, 그림자뷰)
     ├─ index.html       화면
     ├─ game.js          진행·판정·점수·등수

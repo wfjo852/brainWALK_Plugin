@@ -323,6 +323,9 @@ class SimPlayers {
   /** (시험용) i번째 가상 플레이어가 손으로 가리키기: 가슴 기준 dx, dy(미터) / null 이면 손 내림 */
   point(i, at) { this.players[i].point = at; }
 
+  /** (시험용) i번째 가상 플레이어가 두 손을 모아 공 잡기: 가슴 기준 dx, dy(미터), gap = 두 손 사이(미터) / null 이면 손 내림 */
+  hold(i, at) { this.players[i].hold = at; }
+
   /**
    * (시험용) i번째 가상 플레이어가 던지기: hand 'R'|'L', aim = 손을 뻗는 방향(가슴 기준 옆 dx, 위 dy, 미터),
    * dur = 걸리는 시간(초, 짧을수록 세게)
@@ -371,6 +374,15 @@ class SimPlayers {
       P[J.HandRight] = hand;
       P[J.HandTipRight] = [hand[0], hand[1] + 0.05, 0.36];
       P[J.ThumbRight] = [hand[0] + 0.03, hand[1], 0.35];
+    }
+    if (p.hold) {   // 두 손 모으기 (공 잡기): 가슴 앞에서 두 손을 gap 만큼 벌려 같은 높이로
+      const c = P[J.SpineChest], g = (p.hold.gap ?? 0.12) / 2;
+      for (const [sh, side] of [[J.ShoulderRight, -1], [J.ShoulderLeft, +1]]) {
+        const s = P[sh], hand = [c[0] + (p.hold.dx ?? 0) + side * g, c[1] + p.hold.dy, 0.38];
+        P[sh + 1] = [(s[0] + hand[0]) / 2 + side * 0.08, (s[1] + hand[1]) / 2 - 0.06, 0.16];
+        P[sh + 2] = [hand[0], hand[1] - 0.04, 0.35]; P[sh + 3] = hand;
+        P[sh + 4] = [hand[0], hand[1] + 0.05, 0.4]; P[sh + 5] = [hand[0] - side * 0.03, hand[1], 0.38];
+      }
     }
     if (p.throwing) {   // 던지기: 손을 뒤·위로 뺐다가(55%) 앞으로 휙(45%, 점점 빨라짐)
       const th = p.throwing, k = (t - th.t0) / th.dur;

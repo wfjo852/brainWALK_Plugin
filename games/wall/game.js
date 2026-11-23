@@ -7,6 +7,8 @@
 //          사람은 서 있는 자리(화면 왼쪽→오른쪽)에 가까운 트랙을 받음
 //  - 공 잡기: 두 손을 RULE.grabGap(m) 안으로 모으면 내 트랙의 공이 손으로 올라옴.
 //             두 손이 RULE.releaseGap 넘게 RULE.releaseTime 초 벌어지면 공을 놓침(바닥으로) → 다시 모으면 또 잡힘
+//  - 멀리 선 사람: 손 관절이 불확실하면 손목을 쓰고, 카메라에서 RULE.nearDist m 넘게 멀면 잡기·놓치기 기준을 너그럽게,
+//                  손이 잠깐 끊겨도 RULE.handHold 초는 마지막 위치 유지. RULE.tooFar m 넘으면 앞으로 와 달라고 안내
 //  - 공 위치: 화면에 보이는 두 손 사이 (가운데). 단, 내 트랙 밖·벽 위아래로는 나가지 않음. 던지는 게 아니라 손으로 옮김
 //  - 벽: 저 멀리서 다가옴. 트랙마다 동그란 구멍 하나. 자리는 레일 안 가로 3 × 세로 3 중 정중앙을 뺀 8곳.
 //        이전 구멍과 같은 자리는 안 나오고, 멀리 떨어진 자리가 잘 나옴
@@ -37,8 +39,15 @@ const RULE = {
   grabTime: 0.25,         // 이만큼(초) 모으고 있어야 잡힘
   releaseGap: 0.5,        // 두 손 사이가 이보다 벌어지고
   releaseTime: 0.6,       //   이만큼(초) 지나면 공을 놓침 (잠깐 흔들린 건 봐줌)
+  // 멀리 선 사람: 카메라에서 멀수록 손 인식이 흔들리고 끊기므로 기준을 너그럽게
+  nearDist: 2.5,          // 이 거리(m)까지는 위 기준 그대로
+  farLoose: 0.35,         // 1m 멀어질 때마다 잡기·놓치기 거리와 놓치기 시간을 이만큼씩 늘림 (최대 farMax 배)
+  farMax: 1.6,
+  handHold: 0.6,          // 손이 잠깐 안 보여도 이만큼(초)은 마지막 위치를 그대로 씀
+  tooFar: 3.6,            // 이보다 멀면 "앞으로 와 주세요" 안내
   reachDown: 1.15,        // 손이 닿는 범위 (몸통 길이 = 가슴~골반 배수): 가슴 아래로 이만큼 = 맨 아래
   reachUp: 0.9,           //                                           가슴 위로 이만큼 = 맨 위
+  reachSide: 1.6,         //                                           좌우로 이만큼 (구멍을 옆으로 옮기는 한계)
   holes: [0.12, 0.5, 0.88], // 구멍 가운데 높이 (손이 닿는 범위 비율): 아래 · 가운데 · 위
   // 구멍 자리 = 가로(왼쪽·가운데·오른쪽) × 세로(아래·가운데·위) 9곳 중 레일 정중앙을 뺀 8곳
   holeRadius: 0.2,        // 동그란 구멍 반지름 (손이 닿는 범위 비율)
@@ -164,23 +173,46 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function reachOf(p) {
   const b = p?.body, r = ballR();
   const chest = b && stage.toScreen(b, J.SpineChest), pelvis = b && stage.toScreen(b, J.Pelvis);
-  let low = L.FY - L.WH * 0.1, high = L.FY - L.WH * 0.9;
+  let low = L.FY - L.WH * 0.1, high = L.FY - L.WH * 0.9, side = Infinity;
   if (chest && pelvis) {
     const t = Math.max(20, pelvis.y - chest.y);   // 몸통 길이 (px)
-    low = chest.y + RULE.reachDown * t; high = chest.y - RULE.reachUp * t;
+    low = chest.y + RULE.reachDown * t; high = chest.y - RULE.reachUp * t; side = RULE.reachSide * t;
   }
-  return { low: clamp(low, wallTop() + r * 2, L.FY - r), high: clamp(high, wallTop() + r, L.FY - r * 2) };
+  return { low: clamp(low, wallTop() + r * 2, L.FY - r), high: clamp(high, wallTop() + r, L.FY - r * 2), side };
 }
 
 // ───────── 두 손 읽기 ─────────
 /** 두 손: 사이 거리(m) + 화면에서 두 손 가운데 (공이 갈 자리) */
+/** 한 손 자리: 손 관절이 확실하면(신뢰도 2 이상) 손, 아니면 더 안정적인 손목 (멀리 서면 손끝 쪽이 잘 흔들림) */
+const HAND_JOINTS = [[J.HandLeft, J.WristLeft], [J.HandRight, J.WristRight]];
+function handJoint(b, [hand, wrist]) {
+  for (const j of b.conf(hand) >= 2 ? [hand, wrist] : [wrist, hand]) {
+    if (b.conf(j) <= 0) continue;
+    const scr = stage.toScreen(b, j);
+    if (scr) return { j, p: b.pos(j), scr };
+  }
+  return null;
+}
+/** 카메라와의 거리에 따른 너그러움 배수 (가까우면 1) */
+function farness(b) {
+  const z = b ? b.pos(J.Pelvis).z : 0;
+  return clamp(1 + (z - RULE.nearDist) * RULE.farLoose, 1, RULE.farMax);
+}
+/** 두 손: 사이 거리(m) + 화면에서 두 손 가운데 (공이 갈 자리) + 이 사람 기준(멀면 너그럽게).
+ *  손이 잠깐 안 보이면 RULE.handHold 초 동안 마지막 값을 씀 */
 function readHands(p) {
-  const b = p.body;
-  if (!b || b.conf(J.HandLeft) <= 0 || b.conf(J.HandRight) <= 0) return null;
-  const l = b.pos(J.HandLeft), r = b.pos(J.HandRight);
-  const sl = stage.toScreen(b, J.HandLeft), sr = stage.toScreen(b, J.HandRight);
-  if (!sl || !sr) return null;
-  return { gap: Math.hypot(l.x - r.x, l.y - r.y, l.z - r.z), x: (sl.x + sr.x) / 2, y: (sl.y + sr.y) / 2 };
+  const b = p.body, now = performance.now() / 1000;
+  const l = b && handJoint(b, HAND_JOINTS[0]), r = b && handJoint(b, HAND_JOINTS[1]);
+  if (l && r) {
+    const k = farness(b);
+    p.lastHands = {
+      gap: Math.hypot(l.p.x - r.p.x, l.p.y - r.p.y, l.p.z - r.p.z),
+      x: (l.scr.x + r.scr.x) / 2, y: (l.scr.y + r.scr.y) / 2, pts: [l.scr, r.scr],
+      grabGap: RULE.grabGap * k, releaseGap: RULE.releaseGap * k, releaseTime: RULE.releaseTime * k, t: now,
+    };
+    return p.lastHands;
+  }
+  return p.lastHands && now - p.lastHands.t <= RULE.handHold ? p.lastHands : null;
 }
 
 const GRAVITY = 2400;   // 공이 떨어지는 빠르기 (px/s²)
@@ -190,8 +222,8 @@ function updateBalls(dt, now) {
     if (p.ball === 'out') { if (p.y < L.H + r * 2) { p.vy += GRAVITY * dt; p.y += p.vy * dt; } continue; }
     const hands = readHands(p);
     if (p.ball === 'held') {
-      if (!hands || hands.gap > RULE.releaseGap) p.apart += dt; else p.apart = 0;
-      if (p.apart >= RULE.releaseTime) { drop(p); continue; }
+      if (!hands || hands.gap > hands.releaseGap) p.apart += dt; else p.apart = 0;
+      if (p.apart >= (hands?.releaseTime ?? RULE.releaseTime)) { drop(p); continue; }
       if (hands) {   // 공 = 두 손 사이 (내 트랙 안, 벽 높이 안에서)
         const tx = clamp(hands.x, laneL(p.lane) + r, laneR(p.lane) - r), ty = clamp(hands.y, wallTop() + r, L.FY - r);
         const k = Math.min(1, dt * 14);
@@ -201,7 +233,7 @@ function updateBalls(dt, now) {
       // 바닥에 놓인 공: 떨어지는 중이면 떨어지고, 두 손을 모으면 잡힘
       p.vy += GRAVITY * dt; p.y = Math.min(L.FY - r, p.y + p.vy * dt); if (p.y >= L.FY - r) p.vy = 0;
       p.x = clamp(p.x, laneL(p.lane) + r, laneR(p.lane) - r);
-      if (hands && hands.gap <= RULE.grabGap) p.near += dt; else p.near = 0;
+      if (hands && hands.gap <= hands.grabGap) p.near += dt; else p.near = 0;
       if (p.near >= RULE.grabTime && (phase === 'grab' || phase === 'count' || phase === 'play')) grab(p, now);
     }
   }
@@ -233,7 +265,7 @@ function spawnWall() {
     const span = reach.low - reach.high;
     const R = Math.min(lw * RULE.holeMaxLane, Math.max(r * RULE.holeMin, span * RULE.holeRadius));
     const cy = clamp(reach.low - span * RULE.holes[spot.v], wallTop() + R, L.FY - R);
-    const side = Math.max(0, lw / 2 - R - 6);         // 레일 안에서 좌우로 옮길 수 있는 만큼
+    const side = Math.max(0, Math.min(lw / 2 - R - 6, reach.side));   // 레일 안, 그리고 팔이 닿는 만큼만 좌우로
     const cx = laneX(i) + spot.u * side;
     return { cx, cy, R, spot };
   });
@@ -348,7 +380,9 @@ function frame(ms) {
     const n = walls.filter(w => w.judged).length;
     $('wallNo').innerHTML = `🧱 ${n}개 통과<small>속도 ×${(RULE.firstTime / Math.max(RULE.minTime, game.nextT / RULE.speedUp)).toFixed(1)}</small>`;
     const dropped = players.filter(p => p.ball === 'floor');
-    setMsg(dropped.length ? `🤲 ${dropped.map(p => p.name).join(', ')}님, 두 손을 모아 공을 잡으세요` : '손 높이로 공을 구멍에 맞추세요');
+    const far = tooFarNames();
+    setMsg(dropped.length ? `🤲 ${dropped.map(p => p.name).join(', ')}님, 두 손을 모아 공을 잡으세요`
+      : far.length ? `🚶 ${far.join(', ')}님, 한두 걸음 앞으로 와 주세요` : '손 높이로 공을 구멍에 맞추세요');
   }
   if (phase === 'end' && now - phaseAt > 2.4) showResults();
 
@@ -361,7 +395,15 @@ function frame(ms) {
 requestAnimationFrame(frame);
 
 /** 공 잡기 단계: 들어온 사람이 모두 잡으면(또는 한 명이라도 잡고 오래 기다리면) 3·2·1 */
+/** 카메라에서 너무 멀리 선 사람 이름 (손이 잘 안 잡힘 → 앞으로 와 달라고 안내) */
+function tooFarNames() {
+  return players.filter(p => p.ball !== 'out' && p.body && p.body.pos(J.Pelvis).z > RULE.tooFar).map(p => p.name);
+}
+
 function updateGrab(now) {
+  const far = tooFarNames();
+  setMsg(far.length ? `🚶 ${far.join(', ')}님, 한두 걸음 앞으로 와 주세요` : '🤲 두 손을 모아 공을 잡으세요');
+  if (far.length && now - (game.farSaid ?? -99) > 8) { game.farSaid = now; sound.say(`${far.join(', ')}님, 한두 걸음 앞으로 와 주세요`, 0.95); }
   const here = players.filter(p => p.present);
   const held = here.filter(p => p.ball === 'held');
   $('wallNo').textContent = players.length ? `🤲 ${held.length} / ${here.length}명 공을 잡았어요` : '🙋 트랙 앞에 서 주세요';
@@ -687,9 +729,10 @@ function drawHands(c, now) {
   for (const p of players) {
     const b = p.body;
     if (!b || p.ball === 'out') continue;
-    const pts = [J.HandLeft, J.HandRight].map(j => (b.conf(j) > 0 ? stage.toScreen(b, j) : null)).filter(Boolean);
+    const hands = readHands(p);
+    const pts = hands ? hands.pts : HAND_JOINTS.map(hj => handJoint(b, hj)?.scr).filter(Boolean);
     if (!pts.length) continue;
-    const hands = readHands(p), close = hands && hands.gap <= RULE.grabGap;
+    const close = hands && hands.gap <= hands.grabGap;
     c.save();
     if (pts.length === 2) {
       const mx = (pts[0].x + pts[1].x) / 2, my = (pts[0].y + pts[1].y) / 2;
@@ -843,6 +886,7 @@ if (SIM) {
   window.__wall = () => ({ phase, lanes: lanes.length, walls: walls.length, n: game?.n ?? 0,
     players: players.map(p => [p.name, p.lane, p.ball, p.passed, Math.round(p.x), Math.round(p.y)]) });
   window.__wallStart = () => startGame();
+  window.__wallClient = client;   // 시험용: 가상 플레이어 조작
   window.__wallD = () => walls.filter(w => !w.judged).sort((a, b) => b.d - a.d)[0]?.d;   // 시험용: 가장 가까운 벽이 얼마나 왔는지
 }
 setPhase('setup');

@@ -1,0 +1,24 @@
+{
+  "_설명": "배경음악 목록. lobby = 게임 고르기 화면 곡, 게임 화면은 lobby 곡을 뺀 나머지에서 무작위. license 가 있는 곡은 화면 아래에 credit 문구를 작게 표시함 (원본: 같은 이름의 .txt). 곡을 추가하면 mp3 를 이 폴더에 넣고 tracks 에 한 줄 추가.",
+  "lobby": "bensound-doingdamage",
+  "volume": 0.3,
+  "tracks": [
+    {
+      "id": "bensound-doingdamage",
+      "file": "bensound-doingdamage.mp3",
+      "license": { "source": "https://www.bensound.com", "code": "27JSL4YUE4TCZDS0", "artist": "Dollshade" },
+      "credit": "Music by https://www.bensound.com · License code: 27JSL4YUE4TCZDS0 · Artist: Dollshade"
+    },
+    {
+      "id": "bensound-clapandyell",
+      "file": "bensound-clapandyell.mp3",
+      "license": { "source": "https://www.bensound.com", "code": "LB3EHXDAWWP6X0KB", "artist": "Benjamin Tissot" },
+      "credit": "Music by https://www.bensound.com · License code: LB3EHXDAWWP6X0KB · Artist: Benjamin Tissot"
+    },
+    { "id": "bensound-clearday", "file": "bensound-clearday.mp3", "license": null, "credit": null },
+    { "id": "bensound-highoctane", "file": "bensound-highoctane.mp3", "license": null, "credit": null },
+    { "id": "bensound-onrepeat", "file": "bensound-onrepeat.mp3", "license": null, "credit": null },
+    { "id": "bensound-punky", "file": "bensound-punky.mp3", "license": null, "credit": null },
+    { "id": "bensound-thewildwest", "file": "bensound-thewildwest.mp3", "license": null, "credit": null }
+  ]
+}

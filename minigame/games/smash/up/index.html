@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>사진 보내기</title>
+<link rel="icon" href="data:,">
+<!--
+  휴대폰용: 사진 깨기 게임에 사진 보내기 (게임 화면의 QR 코드로 열림)
+  - 사진은 휴대폰에서 긴 쪽 1600px로 줄여서 보냄 (빠르고 가볍게)
+  - 같은 와이파이의 게임 PC로만 감 (인터넷으로 나가지 않음)
+  - 이 페이지는 다른 파일(_shared 등)을 쓰지 않음: 휴대폰에는 이 페이지만 열려 있음
+-->
+<style>
+  :root {
+    --bg: #0b131c;
+    --panel: #152230;
+    --line: #334557;
+    --text: #f5f8fc;
+    --muted: #adbdcd;
+    --ok: #79e6ba;
+    --bad: #ff8792;
+    --font: "Pretendard", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+    --type-caption: clamp(.8125rem, .73rem + .45vmin, .9375rem);
+    --type-small: clamp(.875rem, .8rem + .55vmin, 1.0625rem);
+    --type-body: clamp(1rem, .86rem + .7vmin, 1.25rem);
+    --type-control: clamp(1.125rem, .92rem + 1.05vmin, 1.625rem);
+    --type-heading: clamp(1.875rem, 1.25rem + 3.2vmin, 3rem);
+    --space: clamp(14px, 4vmin, 32px);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100dvh; padding: max(var(--space), env(safe-area-inset-top)) max(var(--space), env(safe-area-inset-right)) max(var(--space), env(safe-area-inset-bottom)) max(var(--space), env(safe-area-inset-left));
+    background: radial-gradient(ellipse at top, #28394e, var(--bg) 75%); color: var(--text); font: var(--type-body)/1.5 var(--font); }
+  main { max-width: 34rem; margin: clamp(0px, 5dvh - 20px, 48px) auto 0; padding: var(--space); border: 1px solid var(--line); border-top: 3px solid #ffbc92;
+    border-radius: clamp(16px, 3vmin, 26px); background: var(--panel); overflow-wrap: anywhere; }
+  h1 { margin: 0 0 .2em; font-size: var(--type-heading); line-height: 1.15; letter-spacing: -.045em; }
+  .lead { margin: 0 0 1.4em; color: var(--muted); font-size: var(--type-body); }
+  label { display: block; font-weight: 700; color: var(--muted); margin: 0 0 6px; font-size: var(--type-small); }
+  input[type=text] { width: 100%; font: 600 var(--type-body)/1.5 var(--font); padding: .65em .85em; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  #pick { display: block; width: 100%; margin-top: 1em; padding: .8em; border-radius: 14px; border: 0; background: var(--ok); color: var(--bg); font: 900 var(--type-control)/1.25 var(--font); cursor: pointer; }
+  #pick small { display: block; font-size: var(--type-small); font-weight: 600; opacity: .7; margin-top: 4px; }
+  #pick:disabled { opacity: .5; }
+  #status { margin-top: 1em; font-size: var(--type-body); font-weight: 700; text-align: center; }
+  #status.ok { color: var(--ok); } #status.bad { color: var(--bad); }
+  .bar { height: 10px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; margin-top: 10px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .2s; }
+  #sent { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 18px; }
+  #sent img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
+  #sent:empty, #status:empty { display: none; }
+  .hint { margin-top: 22px; color: var(--muted); font-size: var(--type-caption); line-height: 1.5; }
+  input:focus-visible, button:focus-visible { outline: 3px solid #ffca9f; outline-offset: 3px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>📸 사진 깨기</h1>
+  <p class="lead">깨고 싶은 사진을 보내 주세요.<br>보낸 사진은 게임 화면에 바로 나타나요.</p>
+
+  <label for="from">이름 (안 써도 돼요)</label>
+  <input type="text" id="from" maxlength="12" placeholder="예: 김영희" autocomplete="off">
+
+  <button id="pick">📷 사진 고르기<small>여러 장 골라도 돼요</small></button>
+  <input type="file" id="file" accept="image/*" multiple hidden>
+
+  <div id="status"></div>
+  <div class="bar hidden" id="barBox"><i id="bar"></i></div>
+  <div id="sent"></div>
+
+  <p class="hint">사진은 같은 와이파이의 게임 PC로만 보내져요.<br>안 되면 휴대폰이 게임 PC와 같은 와이파이에 연결돼 있는지 확인해 주세요.</p>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const token = new URLSearchParams(location.search).get('t') || '';
+const MAX = 1600;
+
+try { $('from').value = localStorage.getItem('femto.up.from') || ''; } catch {}
+$('from').onchange = () => { try { localStorage.setItem('femto.up.from', $('from').value.trim()); } catch {} };
+
+function status(text, cls = '') { $('status').textContent = text; $('status').className = cls; }
+
+if (!token) { status('게임 화면의 QR 코드를 다시 찍어 주세요', 'bad'); $('pick').disabled = true; }
+
+$('pick').onclick = () => $('file').click();
+$('file').onchange = async e => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (files.length) await send(files);
+};
+
+/** 긴 쪽 1600px JPEG로 줄이기. 못 읽는 형식이면 원본 그대로 */
+async function shrink(file) {
+  try {
+    let bmp;
+    try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+    catch { bmp = await createImageBitmap(file); }
+    const s = Math.min(1, MAX / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close?.();
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.86));
+    if (!blob) throw new Error();
+    return { blob, name: file.name.replace(/\.[^.]+$/, '') + '.jpg' };
+  } catch {
+    return { blob: file, name: file.name };
+  }
+}
+
+async function send(files) {
+  $('pick').disabled = true;
+  status(`사진 준비 중… (${files.length}장)`);
+  const fd = new FormData();
+  fd.append('from', $('from').value.trim());
+  const previews = [];
+  for (const f of files) {
+    const { blob, name } = await shrink(f);
+    fd.append('file', blob, name);
+    previews.push(URL.createObjectURL(blob));
+  }
+  status('보내는 중…');
+  $('barBox').classList.remove('hidden'); $('bar').style.width = '0';
+  try {
+    const res = await new Promise((resolve, reject) => {
+      const x = new XMLHttpRequest();
+      x.open('POST', '/api/smash/up?t=' + encodeURIComponent(token));
+      x.upload.onprogress = ev => { if (ev.lengthComputable) $('bar').style.width = (ev.loaded / ev.total * 100) + '%'; };
+      x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch {} resolve({ status: x.status, ...j }); };
+      x.onerror = () => reject(new Error('게임 PC에 연결할 수 없어요'));
+      x.send(fd);
+    });
+    if (res.ok) {
+      status(`✅ ${res.count}장 보냈어요! 게임 화면을 보세요`, 'ok');
+      for (const src of previews) { const img = new Image(); img.src = src; $('sent').prepend(img); }
+      if (res.errors?.length) status(`✅ ${res.count}장 보냈어요 · ${res.errors.length}장은 못 보냈어요`, 'ok');
+    } else {
+      status(res.error || res.errors?.[0] || '보내지 못했어요. 다시 해 주세요', 'bad');
+    }
+  } catch (err) {
+    status(err.message, 'bad');
+  } finally {
+    $('pick').disabled = !token;
+    setTimeout(() => $('barBox').classList.add('hidden'), 800);
+  }
+}
+</script>
+</body>
+</html>

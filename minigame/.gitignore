@@ -1,0 +1,13 @@
+# 빌드 결과물 (run.bat / FemtoSetup.exe 가 다시 만듦)
+agent/bin/
+agent/obj/
+*.user
+.vs/
+
+# 설치 로그
+setup.log
+
+# Orbbec K4A Wrapper DLL (FemtoSetup.exe 가 GitHub에서 다시 받음) — 안내 파일만 보관
+orbbec/*
+!orbbec/README.txt
+agent/Log/

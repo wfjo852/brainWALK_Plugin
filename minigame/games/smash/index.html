@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>사진 깨기</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="../_shared/ui.css">
+<style>
+  /* 화면 구성: 위 = 안내 띠, 아래 = 사진판 (사람 모습은 보이지 않음) */
+  :root { --game-accent: #ffbc92; --head: clamp(142px, 22dvh, 248px); --qbar: clamp(46px, 10dvh, 96px); --head-columns: minmax(0, 1fr) min(1000px, 52vw) minmax(0, 1fr); }
+  /* 공통 틀(헤더·푸터) 사이: var(--shell-top) ~ var(--shell-bottom) */
+  #headband { position: fixed; left: 0; right: 0; top: var(--shell-top); height: var(--head); z-index: 10; display: grid;
+    gap: var(--head-gap, 16px); padding: var(--head-padding, 12px 16px);
+    background: var(--bg); border-bottom: 1px solid var(--line); box-sizing: border-box; }
+  #headband .side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  #headband .side.right { flex-direction: row; justify-content: flex-end; align-items: stretch; }
+  #headband .side.right .cards { flex: 1; min-width: 0; align-items: flex-end; }
+  /* 게임 중에도 QR (사진 계속 받기) */
+  #qrMini { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; }
+  #qrMini img { height: min(100%, clamp(54px, 10vmin, 145px)); width: auto; aspect-ratio: 1; border-radius: 8px; background: #fff; }
+  #qrMini span { font-size: var(--type-small); font-weight: 800; color: var(--muted); white-space: nowrap; }
+  /* 게임 화면 상단: 대기 중인 사진 */
+  #queueBar { position: fixed; left: 0; right: 0; top: calc(var(--shell-top) + var(--head)); height: var(--qbar); z-index: 9; padding: 6px var(--gutter);
+    display: flex; align-items: center; gap: .55em; background: var(--panel); border-bottom: 1px solid var(--line); overflow: hidden; }
+  #queueBar .lbl { flex: none; font-size: var(--type-body); font-weight: 900; color: var(--muted); }
+  #queueBar .lbl b { color: var(--ok); font-size: var(--type-control); }
+  #queueList { display: flex; gap: 10px; min-width: 0; overflow: hidden; align-items: center; }
+  #queueList .q { position: relative; flex: none; height: calc(var(--qbar) - 12px); aspect-ratio: 4 / 3; border-radius: 8px; background: var(--surface) center / cover no-repeat; border: 1px solid var(--line); overflow: hidden; }
+  #queueList .q i { position: absolute; left: 4px; top: 3px; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px; background: rgba(0,0,0,.65); font: 900 var(--type-caption)/22px var(--font); font-style: normal; text-align: center; }
+  #queueList .q span { position: absolute; left: 0; right: 0; bottom: 0; padding: 1px 6px; background: rgba(0,0,0,.6); font-size: var(--type-caption); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #queueList .q.new { animation: arrive 1.2s ease-out; border-color: var(--ok); }
+  #queueList .more { flex: none; font-size: var(--type-label); font-weight: 900; color: var(--muted); }
+  #queueList .empty { font-size: var(--type-body); color: var(--muted); line-height: 1.2; }
+  #headband .center { position: relative; min-width: 0; }
+
+  #guide { position: absolute; inset: 0; box-sizing: border-box; padding: clamp(8px, 1.7vmin, 20px); display: flex; flex-direction: column; justify-content: center; text-align: center; }
+  #guide .msg { font-size: clamp(1.125rem, min(.55rem + 6.4cqi, 4.6dvh), 4rem); font-weight: 900; letter-spacing: -.045em; line-height: 1.12; text-wrap: balance; color: var(--game-accent); overflow-wrap: anywhere; }
+  #guide .msg.pulse { animation: pulse 1s ease-in-out 3; }
+  @keyframes pulse { 50% { transform: scale(1.06); color: var(--warn); } }
+  #guide .sub { margin-top: .3em; font-size: var(--type-label); color: var(--muted); line-height: 1.25; overflow-wrap: anywhere; }
+  #guide .meter { margin-top: .55em; display: flex; align-items: center; gap: .55em; font-size: var(--type-body); font-weight: 800; color: var(--muted); }
+  #guide .meter .bar { flex: 1; height: clamp(8px, 1.5dvh, 16px); border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; }
+  #guide .meter .bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--warn), var(--bad)); border-radius: inherit; transition: width .3s; }
+  #pct { min-width: 4.2em; text-align: right; color: var(--text); }
+
+  .cards { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 320px; }
+  .card { padding: .45em .8em .45em 1em; position: relative; overflow: hidden; display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 10px; }
+  .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--c); }
+  .card .n { font-weight: 800; font-size: var(--type-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .s { font-size: var(--type-heading); font-weight: 900; font-variant-numeric: tabular-nums; }
+  .card.away { opacity: .5; }
+  .card .s small { font-size: var(--type-small); font-weight: 700; color: var(--muted); margin-left: 4px; }
+
+  /* 무대: 사진판(fx) */
+  #fx { position: fixed; left: 0; right: 0; bottom: var(--shell-bottom); top: calc(var(--shell-top) + var(--head) + var(--qbar)); width: 100%; height: calc(100dvh - var(--shell-top) - var(--head) - var(--qbar) - var(--shell-bottom)); pointer-events: none; z-index: 5; }
+  /* 사람 그림자 (그림자뷰): 여기 그린 걸 fx 의 사진판 바로 위에 겹쳐 그림 → 이 캔버스 자체는 안 보이게 */
+  #people { position: fixed; left: 0; right: 0; bottom: var(--shell-bottom); top: calc(var(--shell-top) + var(--head) + var(--qbar)); width: 100%; height: calc(100dvh - var(--shell-top) - var(--head) - var(--qbar) - var(--shell-bottom)); visibility: hidden; pointer-events: none; }
+
+  .big { display: flex; gap: 14px; flex-wrap: wrap; }
+  .big button { min-width: 96px; padding: 12px 22px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface);
+    font-size: var(--type-control); font-weight: 800; color: var(--text); }
+  .big button.on { background: var(--game-accent); color: var(--bg); border-color: var(--game-accent); }
+  .big button small { display: block; font-size: var(--type-small); font-weight: 600; opacity: .75; margin-top: 2px; }
+
+  /* 1. 설정 */
+  #setup { position: fixed; left: 50%; top: calc((100dvh + var(--shell-top) - var(--shell-bottom)) / 2); transform: translate(-50%, -50%); width: min(1120px, calc(100vw - 32px)); max-height: calc(100dvh - var(--shell-top) - var(--shell-bottom) - 24px); overflow: auto; padding: var(--panel-pad); z-index: 12; box-sizing: border-box; }
+  #setup h1 { margin: 0; font-size: var(--type-display); letter-spacing: -1px; }
+  #setup .lead { margin: 2px 0 12px; color: var(--muted); font-size: var(--type-label); }
+  #setup label.t { display: block; font-size: var(--type-body); font-weight: 800; color: var(--muted); margin: 12px 0 8px; }
+  .top2 > :first-child { grid-column: 1 / -1; min-width: 0; }
+  .top2:has(#qrBox:not(.hidden)) > :first-child { grid-column: auto; }
+  #gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 8rem), 1fr)); gap: .65em; }
+  .ph, #addPhoto { aspect-ratio: 4 / 3; }
+  .ph { position: relative; border-radius: 14px; overflow: hidden; border: 4px solid transparent; background: #1b2230 center / cover no-repeat; cursor: pointer; padding: 0; }
+  .ph:not(.on) { opacity: .35; filter: grayscale(.8); }
+  .ph.on { border-color: var(--ok); box-shadow: 0 0 0 3px rgba(61,220,151,.25); }
+  .ph .no { position: absolute; left: 8px; top: 6px; width: 34px; height: 34px; border-radius: 50%; background: var(--ok); color: #0b0e13; font-size: var(--type-body); font-weight: 900; display: grid; place-items: center; }
+  .ph:not(.on) .no { display: none; }
+  .ph .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 8px; background: rgba(0,0,0,.6); font-size: var(--type-caption); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ph.new { animation: arrive 1.2s ease-out; }
+  @keyframes arrive { 0% { transform: scale(.6); box-shadow: 0 0 0 12px rgba(61,220,151,.6); } 60% { transform: scale(1.06); } }
+
+  /* 휴대폰으로 보내기 (QR) */
+  .top2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 27%); gap: var(--gutter); align-items: start; }
+  #qrBox { padding: 14px; border-radius: 18px; background: rgba(255,255,255,.06); border: 2px solid var(--line); text-align: center; }
+  #qrBox h3 { margin: 0 0 8px; font-size: var(--type-body); word-break: keep-all; }
+  #qrBox img { display: block; width: min(100%, clamp(104px, 23dvh, 190px)); margin-inline: auto; aspect-ratio: 1; border-radius: 10px; background: #fff; }
+  #qrBox p { margin: 8px 0 0; font-size: var(--type-small); color: var(--muted); line-height: 1.4; }
+  #qrBox code { display: block; margin-top: 6px; font-size: var(--type-caption); color: var(--muted); word-break: break-all; }
+  #toast { position: fixed; left: 50%; top: calc(var(--shell-top) + 24px); transform: translateX(-50%); z-index: 60; padding: 14px 26px; border-radius: 999px; background: var(--ok); color: #0b0e13; font-size: var(--type-control); font-weight: 900; box-shadow: 0 10px 30px rgba(0,0,0,.4); transition: opacity .3s; }
+  #toast.hidden { display: block; opacity: 0; pointer-events: none; }
+  #photoNo { min-width: 4.5em; color: var(--text); }
+  .ph .del { position: absolute; right: 6px; top: 6px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: var(--type-small); opacity: 0; }
+  .ph:hover .del { opacity: 1; }
+  .tile { min-height: 6.5em; padding: .55em; border-radius: 14px; border: 1px dashed var(--line); background: var(--surface); color: var(--text);
+    display: grid; place-content: center; text-align: center; font-size: var(--type-body); font-weight: 800; gap: 4px; cursor: pointer; }
+  .tile span { font-size: var(--type-heading); }
+  .tile small { font-size: var(--type-caption); font-weight: 600; color: var(--muted); }
+  #addPhoto { min-height: 0; }
+  #addPhotoDialog { width: min(36rem, calc(100% - 2 * var(--gutter))); max-height: calc(100dvh - 2 * var(--gutter)); padding: var(--panel-pad); color: var(--text); }
+  #addPhotoDialog::backdrop { background: #060b12cf; }
+  body:has(#dropHint:not(.hidden)) #addPhotoDialog { border-color: var(--ok); }
+  .add-photo-head { display: flex; justify-content: space-between; align-items: center; gap: .6em; margin-bottom: .8em; }
+  .add-photo-head h2 { margin: 0; font-size: var(--type-heading); line-height: 1.15; }
+  .add-photo-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: .6em; }
+  .add-photo-options .tile { min-height: 5.25em; border-style: solid; }
+  .add-photo-options .tile:hover, #textBtn[aria-expanded="true"] { border-color: var(--ok); }
+  #textRow { display: grid; gap: .5em; margin-top: .8em; }
+  #textRow label { font-weight: 700; color: var(--muted); }
+  .text-input { display: flex; flex-wrap: wrap; gap: .5em; }
+  #textIn { flex: 1 1 10em; min-width: 0; font-size: var(--type-lead); font-weight: 700; padding: .55em .7em; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  #textErr { margin: 0; color: var(--bad); }
+  #textErr:empty { display: none; }
+  #err { color: var(--bad); font-weight: 700; margin-top: 6px; min-height: 0; }
+  #optPower { justify-content: flex-start; }
+  #start { width: 100%; padding: .55em; font-size: var(--type-heading); font-weight: 900; border-radius: 14px; border: 0; background: var(--ok); color: var(--bg); }
+  #start:disabled { opacity: .5; cursor: default; }
+  #seen { margin: 10px 0 0; font-size: var(--type-body); color: var(--muted); }
+  #seen.warn { color: var(--warn); }
+  #dropHint { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(61,220,151,.18); border: 6px dashed var(--ok); font-size: var(--type-display); font-weight: 900; text-align: center; padding: var(--gutter); pointer-events: none; }
+
+  /* 3. 결과 */
+  #results { position: fixed; left: 50%; top: calc((100dvh + var(--shell-top) - var(--shell-bottom)) / 2); transform: translate(-50%, -50%); width: min(900px, calc(100vw - 32px)); max-height: calc(100dvh - var(--shell-top) - var(--shell-bottom) - 24px); overflow: auto; padding: var(--panel-pad); z-index: 12; box-sizing: border-box; text-align: center; }
+  #results h2 { margin: 0; font-size: var(--type-display); }
+  #results .praise { font-size: var(--type-control); color: var(--ok); font-weight: 800; margin: 4px 0 18px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+  .stats div { padding: 14px; border-radius: 16px; background: rgba(255,255,255,.06); font-size: var(--type-body); color: var(--muted); }
+  .stats b { display: block; font-size: var(--type-title); color: var(--text); font-variant-numeric: tabular-nums; }
+  /* 🎯 랭킹: 많이 맞힌 순 → 적게 던진 순 → 마지막 명중이 빠른 순 */
+  #who { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; text-align: left; }
+  #who .rk { display: grid; grid-template-columns: 4.2em minmax(0, 1fr) auto; align-items: center; column-gap: 14px; padding: 10px 18px;
+    border-radius: 16px; background: rgba(255,255,255,.06); border-left: 10px solid var(--c); font-size: var(--type-label); }
+  #who .rk.first { background: rgba(252,196,25,.14); }
+  #who .pos { font-size: 1.5em; font-weight: 900; text-align: center; }
+  #who .nm { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #who .hits b { font-size: 1.4em; font-variant-numeric: tabular-nums; }
+  #who .thr { grid-column: 2 / 4; color: var(--muted); font-size: .8em; }
+  #results .big { justify-content: center; }
+  #results .big button { font-size: var(--type-control); padding: 18px 26px; }
+
+  #pointerHint { position: fixed; inset: auto var(--gutter) calc(var(--shell-bottom) + 8px); width: fit-content; margin-inline: auto; padding: .35em .65em; border-radius: 10px; background: var(--bg); text-align: center; pointer-events: none; font-size: var(--type-body); color: var(--muted); z-index: 13; }
+  #soundBlocked { position: fixed; right: 16px; bottom: calc(var(--shell-bottom) + 14px); max-width: calc(100% - 32px); padding: .5em .75em; border-radius: 12px; background: var(--warn); color: #1a1406; font-weight: 700; z-index: 30; cursor: pointer; }
+
+  /* ───────── 게임 중: 사진을 최대한 크게 ─────────
+     안내 띠 하나(얇게)에 모두: 왼쪽 = 점수 카드 2×2, 가운데 = 안내 한 줄·깨진 정도, 오른쪽 = 다음 사진·QR
+     (다음 사진 줄은 따로 두지 않음 → --qbar: 0) */
+  :root { --head: clamp(64px, 9dvh, 100px); --qbar: 0px; --head-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr); }
+  #headband { --head-padding: 6px 12px; --head-gap: 12px; }
+  #headband .side.left .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 4px; height: 100%; max-width: none; }
+  #headband .side.left .cards .card { padding: 0 .5em 0 .7em; border-radius: 8px; min-height: 0; }
+  #headband .cards .card .n { font-size: var(--type-caption); }
+  #headband .cards .card .s { font-size: var(--type-label); white-space: nowrap; }
+  #headband .cards .card .s small { font-size: var(--type-caption); }
+  #guide { padding: 4px 12px; }
+  #guide .msg { font-size: clamp(1rem, 3.4dvh, 2.2rem); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-wrap: nowrap; }
+  #guide .sub { margin-top: 0; font-size: var(--type-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #guide .meter { margin-top: .2em; font-size: var(--type-caption); }
+  #guide .meter .bar { height: 8px; }
+  #headband .side.right { gap: 10px; align-items: center; }
+  #queueBar { position: static; height: 100%; padding: 0; background: none; border: 0; gap: 6px; min-width: 0; flex: 1; justify-content: flex-end; }
+  #queueBar .lbl { font-size: var(--type-caption); line-height: 1.2; text-align: center; }
+  #queueBar .lbl b { font-size: var(--type-label); }
+  #queueList { gap: 4px; }
+  #queueList .q { height: calc(var(--head) - 20px); border-radius: 6px; }
+  #queueList .q i { min-width: 16px; height: 16px; font-size: 11px; line-height: 16px; border-radius: 8px; }
+  #queueList .q span { display: none; }
+  #queueList .empty { font-size: var(--type-caption); white-space: nowrap; }
+  #qrMini { gap: 2px; }
+  #qrMini img { height: calc(var(--head) - 30px); }
+  #qrMini span { font-size: var(--type-caption); }
+
+  @media (max-width: 800px) {
+    :root { --head: clamp(136px, 27dvh, 220px); }
+    #headband:has(#qrMini:not(.hidden)) .center { margin-right: 76px; }
+    #qrMini { position: absolute; top: 8px; right: 8px; height: auto; }
+    #qrMini img { width: 62px; height: 62px; }
+    #qrMini span, #headband .cards .card .s small { font-size: var(--type-caption); }
+    #guide .msg { font-size: clamp(1.125rem, .65rem + 4cqi, 2.75rem); }
+    #guide .sub, #guide .meter { font-size: var(--type-small); }
+  }
+
+  @media (max-width: 600px) {
+    .top2 { grid-template-columns: 1fr; }
+    #qrBox { display: grid; grid-template-columns: minmax(76px, 32%) minmax(0, 1fr); gap: .35em .65em; align-items: center; }
+    #qrBox h3, #qrBox code { grid-column: 1 / -1; }
+    #qrBox p { margin: 0; }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stats div, #results .big button { padding: .6em; }
+    #toast { width: max-content; max-width: calc(100% - 2 * var(--gutter)); text-align: center; }
+  }
+</style>
+</head>
+<body>
+<canvas id="fx"></canvas>
+<canvas id="people"></canvas>
+
+<!-- 위: 안내 띠 -->
+<header id="headband">
+  <div class="side left">
+    <div class="cards" id="cardsL"></div>
+  </div>
+  <div class="center">
+    <section id="guide" class="panel hidden">
+      <div class="msg" id="msg">팔을 뒤로 했다가 앞으로 휙! 💪</div>
+      <div class="sub" id="sub">사진을 향해 공을 던지듯이</div>
+      <div class="meter"><span id="photoNo">사진 1/1</span><div class="bar"><i id="bar"></i></div><span id="pct">0%</span></div>
+    </section>
+  </div>
+  <div class="side right">
+    <div class="cards hidden" id="cardsR"></div>
+    <!-- 대기 중인 사진 (게임 중에도 QR로 계속 추가됨) — 띠 오른쪽에 작게 -->
+    <div id="queueBar" class="hidden">
+      <div class="lbl">⏭ 다음 <b id="queueCount">0</b>장</div>
+      <div id="queueList"></div>
+    </div>
+    <div id="qrMini" class="hidden"><img id="qrMiniImg" alt="사진 보내기 QR 코드"><span>📱 사진 보내기</span></div>
+  </div>
+</header>
+
+<!-- 1. 설정 -->
+<section id="setup" class="panel">
+  <div class="setup-body">
+    <h1>📸 사진 깨기</h1>
+    <p class="lead">공을 던지듯 팔을 <b>휙!</b> 던지면 사진이 깨져요. 한 장을 다 깨면 다음 사진이 나와요.</p>
+
+    <div class="top2">
+      <div>
+        <label class="t">깰 사진 <small style="font-weight:600">· 번호 순서대로 나와요 (누르면 빼기/넣기)</small></label>
+        <div id="gallery">
+          <button class="tile hand-target" id="addPhoto" type="button" aria-haspopup="dialog"><span aria-hidden="true">＋</span>사진 추가</button>
+        </div>
+        <div id="err" role="status"></div>
+        <label class="t" id="powerLabel">던지기</label>
+        <div class="big" id="optPower" role="group" aria-labelledby="powerLabel">
+          <button class="hand-target" data-v="gentle">살살<small>가볍게 던져도 돼요</small></button>
+          <button class="hand-target" data-v="strong">힘껏<small>세게 던져야 해요</small></button>
+        </div>
+      </div>
+      <aside id="qrBox" class="hidden">
+        <h3>📱 휴대폰으로 사진 보내기</h3>
+        <img id="qrImg" alt="사진 보내기 QR 코드">
+        <p>휴대폰 카메라로 찍으면<br>사진을 보낼 수 있어요.<br>여러 사람이 보내도 돼요!</p>
+        <code id="qrUrl"></code>
+      </aside>
+    </div>
+  </div>
+  <div class="setup-footer">
+    <button id="start" class="hand-target">시작하기 ▶</button>
+    <div id="seen">카메라 연결 중…</div>
+  </div>
+</section>
+
+<dialog id="addPhotoDialog" class="panel" aria-labelledby="addPhotoTitle">
+  <div class="add-photo-head">
+    <h2 id="addPhotoTitle">사진 추가</h2>
+    <button type="button" class="btn hand-target" id="closeAddPhoto">닫기</button>
+  </div>
+  <div class="add-photo-options">
+    <button type="button" class="tile hand-target" id="upload" autofocus><span aria-hidden="true">📷</span>사진 파일 올리기<small>끌어다 놓거나 붙여넣어도 돼요</small></button>
+    <button type="button" class="tile hand-target" id="textBtn" aria-controls="textRow" aria-expanded="false"><span aria-hidden="true">✏️</span>글자로 그림 만들기</button>
+  </div>
+  <input type="file" id="file" accept="image/*" multiple hidden>
+  <form id="textRow" class="hidden">
+    <label for="textIn">그림에 넣을 글자</label>
+    <div class="text-input">
+      <input id="textIn" maxlength="20" placeholder="예: 스트레스, 걱정" aria-describedby="textErr">
+      <button class="btn primary hand-target" id="textMake" type="submit">그림 추가</button>
+    </div>
+    <p id="textErr" role="status"></p>
+  </form>
+</dialog>
+
+<!-- 3. 결과 -->
+<section id="results" class="panel hidden">
+  <h2>🎉 다 깼어요!</h2>
+  <div class="praise" id="praise">속이 시원하시죠?</div>
+  <div class="stats">
+    <div><b id="rPhotos">0</b>장 깼어요</div>
+    <div><b id="rThrows">0</b>번 던졌어요</div>
+    <div><b id="rTime">0:00</b>걸린 시간</div>
+    <div><b id="rPower">0%</b>가장 센 던지기</div>
+  </div>
+  <div id="who"></div>
+  <div class="big">
+    <button class="hand-target" id="again">🔁 다시 깨기</button>
+    <button class="hand-target" id="toSetup">📷 사진 고르기</button>
+    <button class="hand-target" id="toGames">🎮 다른 게임</button>
+  </div>
+</section>
+
+<div id="pointerHint" class="hidden">✋ 손을 들어 버튼 위에 잠시 올려 두세요</div>
+<div id="soundBlocked" class="hidden">🔇 소리를 켜려면 화면을 한 번 눌러 주세요</div>
+<div id="toast" class="hidden"></div>
+<div id="dropHint" class="hidden">📷 여기에 놓으면 사진이 올라가요</div>
+
+<script type="module" src="game.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+<Project>
+  <!-- 사진 깨기 서버 기능이 쓰는 패키지 (에이전트 빌드 때 FemtoSkeletonAgent.csproj 가 자동으로 불러옴) -->
+  <ItemGroup>
+    <!-- QR 코드 그리기 (휴대폰 사진 보내기 주소) -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+  </ItemGroup>
+</Project>

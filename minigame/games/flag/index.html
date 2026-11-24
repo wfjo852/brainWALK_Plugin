@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>청기백기</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="../_shared/ui.css">
+<style>
+  /* 어르신용: 글씨·버튼을 크게, 대비를 높게 */
+  /* 화면 구성: 위 = 안내 띠(명령·점수), 아래 = 내 모습·스켈레톤 (서로 겹치지 않음) */
+  :root { --game-accent: #8bb7ff; --head: clamp(144px, 27dvh, 285px); --head-columns: minmax(0, 1fr) min(1000px, 58vw) minmax(0, 1fr); }
+  /* 공통 틀(헤더·푸터) 사이: var(--shell-top) ~ var(--shell-bottom) */
+  #stage { position: fixed; left: 0; right: 0; top: calc(var(--shell-top) + var(--head)); width: 100%; height: calc(100dvh - var(--shell-top) - var(--head) - var(--shell-bottom));
+    background: radial-gradient(ellipse at 50% 100%, #162d49, var(--bg) 75%); }
+  #tags { position: fixed; left: 0; right: 0; bottom: var(--shell-bottom); top: calc(var(--shell-top) + var(--head)); pointer-events: none; overflow: hidden; }
+  #headband { position: fixed; left: 0; right: 0; top: var(--shell-top); height: var(--head); z-index: 10; display: grid;
+    gap: var(--head-gap, 16px); padding: var(--head-padding, 12px 16px);
+    background: var(--bg); border-bottom: 1px solid var(--line); box-sizing: border-box; }
+  #headband .side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  #headband .side.right { align-items: flex-end; }
+  #headband .center { position: relative; min-width: 0; }
+  #headband .center > .panel { position: absolute; inset: 0; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+
+  /* 머리 위 이름표 + 결과 */
+  .tag {
+    --name-size: clamp(.8125rem, calc(var(--shoulder-width) * .46), var(--type-control));
+    --result-size: clamp(1rem, calc(var(--shoulder-width) * .64), var(--type-title));
+    --tag-width: clamp(5rem, calc(var(--shoulder-width) * 3), 36vw);
+    position: absolute; left: clamp(calc(var(--tag-width) / 2), var(--tag-x), calc(100% - var(--tag-width) / 2));
+    top: max(calc(var(--name-size) * 1.7), var(--tag-y)); max-width: var(--tag-width);
+    transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center; gap: 3px;
+  }
+  .tag:has(.res:not(:empty)) { top: max(calc(var(--name-size) * 1.7 + var(--result-size) * 1.2 + 3px), var(--tag-y)); }
+  .tag .name { max-width: 100%; padding: .2em .65em; border-radius: 999px; background: #0b1829ed; border: 1px solid var(--c);
+    font: 800 var(--name-size)/1.25 var(--font); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 2px 10px #02060c80; }
+  .tag .name::before { content: ""; display: inline-block; width: .45em; height: .45em; margin: 0 .4em .12em 0; border-radius: 50%; background: var(--c); }
+  .tag .res { max-width: 100%; font: 900 var(--result-size)/1.15 var(--font); text-shadow: 0 2px 7px #010307; text-align: center; }
+  .tag .res:empty { display: none; }
+  .tag .res.ok { color: var(--ok); }
+  .tag .res.bad { color: #ffb3ba; }
+  .tag .res.miss { color: var(--warn); }
+  .tag .res.pop { animation: pop .45s ease-out; }
+  @keyframes pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+
+  /* 큰 선택 버튼 (손으로 고르기) */
+  .big { display: flex; gap: 14px; flex-wrap: wrap; }
+  .big button { min-width: 96px; padding: 14px 22px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface);
+    font-size: var(--type-control); font-weight: 800; color: var(--text); }
+  .big button.on { background: var(--game-accent); color: var(--bg); border-color: var(--game-accent); }
+  .big button small { display: block; font-size: var(--type-small); font-weight: 600; opacity: .75; margin-top: 2px; }
+
+  /* 1. 설정 */
+  #setup { position: fixed; left: 50%; top: calc((100dvh + var(--shell-top) - var(--shell-bottom)) / 2); transform: translate(-50%, -50%); width: min(1040px, calc(100vw - 32px)); max-height: calc(100dvh - var(--shell-top) - var(--shell-bottom) - 24px); overflow: auto; padding: var(--panel-pad); z-index: 10; }
+  #setup .setup-body { background: radial-gradient(ellipse at top right, #253f62, transparent 65%); }
+  #setup h1 { display: flex; align-items: center; gap: .32em; margin: 0; font-size: var(--type-display); letter-spacing: -.055em; }
+  #setup .flag-mark { font-size: .8em; }
+  #setup h1 .b { color: var(--game-accent); } #setup h1 .w { color: var(--white); }
+  #setup .sub { margin: 4px 0 10px; color: var(--muted); font-size: var(--type-lead); }
+  .flag-guide { display: flex; flex-wrap: wrap; gap: .4em; margin: 0 0 .65em; padding: 0; list-style: none; font-size: var(--type-body); }
+  .flag-guide li { padding: .25em .65em; border: 1px solid var(--line); border-radius: 999px; background: #0c1728; }
+  .flag-guide .blue b { color: var(--game-accent); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 36px; }
+  .field { margin: 8px 0; }
+  .field > label { display: block; margin-bottom: 10px; color: var(--muted); font-size: var(--type-label); font-weight: 700; }
+  #voiceInfo { margin-top: 10px; font-size: var(--type-small); color: var(--muted); }
+  #voiceInfo.warn { color: var(--warn); }
+  #safety { margin: 8px 0 0; padding: 14px 18px; border-radius: 14px; background: rgba(245,184,75,.14); color: #ffd98a; font-size: var(--type-body); }
+  .auto { margin: 4px 0 12px; font-size: var(--type-label); color: var(--muted); }
+  .auto b { color: var(--warn); }
+  #seen { margin: 12px 0 0; font-size: var(--type-label); color: var(--muted); }
+  #seen b { color: var(--text); }
+  #seen.warn { color: var(--warn); }
+  .actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; }
+  .actions .btn { font-size: var(--type-heading); padding: .65em .9em; }
+  .actions .btn.primary { flex: 1; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+
+  /* 2. 준비 */
+  #ready { padding: .55em .8em; text-align: center; }
+  #ready .msg { font-size: var(--type-heading); font-weight: 800; }
+  #ready .slots { display: flex; gap: .35em; justify-content: center; margin-top: .45em; flex-wrap: wrap; }
+  #ready .slot { padding: .25em .6em; border-radius: 999px; background: rgba(255,255,255,.08); font-weight: 800; font-size: var(--type-lead); border: 1px solid transparent; }
+  #ready .slot.on { background: rgba(61,220,151,.22); }
+  #ready .hint { margin-top: .35em; color: var(--muted); font-size: var(--type-small); }
+  #count { align-items: center; font-size: clamp(2rem, min(12vmin, 12cqi), 9.375rem); font-weight: 900; line-height: 1; color: var(--warn); }
+
+  /* 3. 게임 중 */
+  #ready, #count, #hud { border-color: #496183; background: linear-gradient(135deg, #203859, #122035 68%); }
+  #hud { padding: clamp(8px, 1.7vmin, 20px); text-align: center; }
+  #hud .meta { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: var(--type-body); font-weight: 700; }
+  #level .dots { margin-left: 8px; letter-spacing: 2px; color: var(--warn); font-size: var(--type-caption); }
+  #cmd { margin: 2px 0 8px; font-size: clamp(1.125rem, min(.55rem + 7cqi, 6.6dvh), 5rem); font-weight: 900; letter-spacing: -.05em; line-height: 1.12; text-wrap: balance; overflow-wrap: anywhere; }
+  #cmd .R { color: var(--game-accent); }
+  #cmd .L { color: var(--white); text-decoration: underline; text-decoration-thickness: .08em; text-underline-offset: .12em; text-decoration-color: rgba(255,255,255,.4); }
+  #cmd.back { color: var(--warn); }
+  #cmd.rest { color: var(--ok); }
+  #cmd.pop { animation: pop .35s ease-out; }
+  #sub { margin: -2px 0 10px; font-size: var(--type-lead); color: var(--muted); min-height: 0; line-height: 1.25; overflow-wrap: anywhere; }
+  #sub.warn { color: var(--warn); font-weight: 800; }
+  #sub.up { color: var(--ok); font-weight: 800; }
+  #sub:empty { display: none; }
+  #bar { flex: 0 0 clamp(5px, 1.25dvh, 12px); border-radius: 99px; background: rgba(255,255,255,.12); overflow: hidden; }
+  #bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #5794ff, #eaf4ff); transform-origin: left; }
+
+  /* 점수 카드: 안내 띠 양옆 (왼쪽 사람은 왼쪽, 오른쪽 사람은 오른쪽) */
+  .cards { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 340px; }
+  .card { padding: .45em .8em .45em 1em; position: relative; overflow: hidden; display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 10px; }
+  .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--c); }
+  .card .n { font-weight: 800; font-size: var(--type-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .s { font-size: var(--type-heading); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.1; text-align: right; }
+  .card .l { grid-column: 1 / 3; font-size: var(--type-small); color: var(--muted); min-height: 1.3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .l .streak { color: var(--ok); font-weight: 700; margin-left: 6px; }
+  .card.away { opacity: .5; }
+
+  /* 4. 결과 */
+  #results { position: fixed; left: 50%; top: calc((100dvh + var(--shell-top) - var(--shell-bottom)) / 2); transform: translate(-50%, -50%); width: min(1000px, calc(100vw - 32px)); max-height: calc(100dvh - var(--shell-top) - var(--shell-bottom) - 32px); overflow: auto; padding: var(--panel-pad); z-index: 10; }
+  #results h2 { margin: 0 0 4px; font-size: var(--type-title); }
+  #praise { margin: 0 0 18px; font-size: var(--type-control); color: var(--ok); font-weight: 700; }
+  .rank { display: grid; grid-template-columns: 1.25em minmax(0, 1fr) auto; font-size: var(--type-display); align-items: center; gap: 4px .35em; padding: .4em; border-radius: 18px; background: rgba(255,255,255,.06); margin-bottom: 12px; border-left: 10px solid var(--c); }
+  .rank.first { background: linear-gradient(120deg, #223e66, #213047); }
+  .rank .pos { font-size: var(--type-display); font-weight: 900; text-align: center; line-height: 1; }
+  .rank .who { font-size: var(--type-heading); font-weight: 800; overflow-wrap: anywhere; }
+  .rank .pts { font-size: var(--type-title); font-weight: 900; font-variant-numeric: tabular-nums; }
+  .rank .st { grid-column: 2 / 4; color: var(--muted); font-size: var(--type-body); display: flex; gap: 22px; flex-wrap: wrap; }
+  .best { margin-top: 14px; font-size: var(--type-small); color: var(--muted); }
+  .best ol { margin: 6px 0 0; padding-left: 22px; }
+  .best li b { color: var(--text); }
+  .best .new { color: var(--warn); font-weight: 800; }
+
+  #pointerHint { position: fixed; inset: auto var(--gutter) calc(var(--shell-bottom) + 8px); width: fit-content; margin-inline: auto; padding: .35em .65em; border-radius: 10px; background: var(--bg); text-align: center; pointer-events: none; font-size: var(--type-body); color: var(--muted); z-index: 11; }
+  #soundBlocked { position: fixed; right: 16px; bottom: calc(var(--shell-bottom) + 14px); max-width: calc(100% - 32px); padding: .5em .75em; border-radius: 12px; background: var(--warn); color: #1a1406; font-weight: 700; z-index: 30; cursor: pointer; }
+
+  @media (max-width: 800px) {
+    :root { --head: clamp(168px, 30dvh, 230px); }
+    #hud .meta, #sub { font-size: var(--type-small); }
+    #cmd { font-size: clamp(1.125rem, min(.65rem + 4cqi, 5.8dvh), 2.75rem); }
+    #level .dots { display: block; margin-left: 0; }
+  }
+  #setup .actions { margin: 0; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="tags"></div>
+
+<!-- 위: 안내 띠 -->
+<header id="headband">
+  <div class="side left">
+    <div class="cards" id="cardsL"></div>
+  </div>
+  <div class="center">
+    <!-- 2. 준비 -->
+    <section id="ready" class="panel hidden">
+      <div class="msg">모두 <b>두 손을 위로</b> 올리면 시작해요 🙌</div>
+      <div class="slots" id="readySlots"></div>
+      <div class="hint">보호자: Space 키 = 바로 시작 · Esc 키 = 게임 다시 시작</div>
+    </section>
+    <section id="count" class="panel hidden"></section>
+    <!-- 3. 게임 중 -->
+    <section id="hud" class="panel hidden">
+      <div class="meta"><span id="round">1 / 20</span><span id="level">1단계</span></div>
+      <div id="cmd">준비</div>
+      <div id="sub"></div>
+      <div id="bar"><i></i></div>
+    </section>
+  </div>
+  <div class="side right">
+    <div class="cards" id="cardsR"></div>
+  </div>
+</header>
+
+<!-- 1. 설정 -->
+<section id="setup" class="panel">
+  <div class="setup-body">
+    <h1><span class="flag-mark" aria-hidden="true"></span><span><span class="b">청기</span><span class="w">백기</span></span></h1>
+    <p class="sub">말하는 대로 팔과 다리를 올리고, "내려!" 하면 제자리로 내려요.</p>
+    <ul class="flag-guide">
+      <li class="blue"><b>청기</b> · 오른손</li>
+      <li><b>백기</b> · 왼손</li>
+    </ul>
+
+    <div class="grid2">
+      <div class="field">
+        <label>어떤 동작으로 할까요?</label>
+        <div class="big" id="optMove">
+          <button class="hand-target" data-v="both">팔·다리</button><button class="hand-target" data-v="arms">팔만</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>몇 번 할까요?</label>
+        <div class="big" id="optRounds">
+          <button class="hand-target" data-v="10">10번<small>약 1분</small></button><button class="hand-target" data-v="20">20번<small>약 3분</small></button><button class="hand-target" data-v="30">30번<small>약 5분</small></button>
+        </div>
+      </div>
+    </div>
+    <p class="auto">⭐ 난이도는 <b>자동</b>이에요. 처음엔 쉽게 시작해서 잘하시면 조금씩 어려워지고, 힘들어하시면 다시 쉬워져요.</p>
+    <div id="safety">⚠ 다리를 들 때는 <b>의자 등받이나 벽을 잡고</b> 하세요. 균형이 걱정되면 <b>팔만</b>을 고르세요.</div>
+
+    <div id="seen">카메라 연결 중…</div>
+    <div id="voiceInfo"></div>
+  </div>
+  <div class="actions setup-footer">
+    <button id="start" class="btn primary hand-target" disabled>시작</button>
+  </div>
+</section>
+
+
+<!-- 4. 결과 -->
+<section id="results" class="panel hidden">
+  <h2>결과</h2>
+  <p id="praise"></p>
+  <div id="ranking"></div>
+  <div class="actions">
+    <button id="again" class="btn primary hand-target">🔁 다시 하기</button>
+    <button id="toSetup" class="btn hand-target">⚙ 설정 바꾸기</button>
+    <button id="toGames" class="btn hand-target">🏠 다른 게임</button>
+  </div>
+  <div class="best" id="best"></div>
+</section>
+<div id="pointerHint" class="hidden">✋ 손을 들어 버튼 위에 잠시 올려 두세요</div>
+<div id="soundBlocked" class="hidden">🔇 소리가 꺼져 있어요 — 화면을 한 번 눌러 주세요</div>
+
+<script type="module" src="./game.js"></script>
+</body>
+</html>

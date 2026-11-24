@@ -1,0 +1,6 @@
+빌드 방법 (Go 1.22+)
+  go install github.com/akavel/rsrc@latest
+  rsrc -manifest setup.manifest -arch amd64 -o rsrc_windows_amd64.syso
+  set GOOS=windows& set GOARCH=amd64& go build -trimpath -ldflags "-s -w" -o FemtoSetup.exe .
+
+obsensor_metadata_win10.ps1 은 Orbbec 공식 저장소(github.com/orbbec/OrbbecSDK, misc/scripts)의 원본입니다.

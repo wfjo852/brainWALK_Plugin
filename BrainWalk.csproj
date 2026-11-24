@@ -12,13 +12,13 @@
   </PropertyGroup>
 
   <Target Name="CreateApplicationIcon" BeforeTargets="CoreCompile"
-          Inputs="$(MSBuildProjectDirectory)\..\icon\Run_icon.png"
+          Inputs="$(MSBuildProjectDirectory)\icon\Run_icon.png"
           Outputs="$(MSBuildProjectDirectory)\BrainWalk.ico">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\create-icon.ps1&quot; -Source &quot;$(MSBuildProjectDirectory)\..\icon\Run_icon.png&quot;" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\create-icon.ps1&quot; -Source &quot;$(MSBuildProjectDirectory)\icon\Run_icon.png&quot;" />
   </Target>
 
   <ItemGroup>
-    <EmbeddedResource Include="../icon/Run_icon.png" LogicalName="BrainWalk.RunIcon.png" />
+    <EmbeddedResource Include="icon/Run_icon.png" LogicalName="BrainWalk.RunIcon.png" />
     <PackageReference Include="System.IO.Ports" Version="9.0.0" />
     <Content Include="lidar_config.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="ant-libs/pc/*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" ExcludeFromSingleFile="true" />

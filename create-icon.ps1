@@ -1,5 +1,5 @@
 param(
-    [string]$Source = (Join-Path $PSScriptRoot '..\icon\setting_icon.png'),
+    [string]$Source = (Join-Path $PSScriptRoot 'icon\setting_icon.png'),
     [string]$Destination = (Join-Path $PSScriptRoot 'BrainWalk.ico')
 )
 

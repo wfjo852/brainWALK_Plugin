@@ -8,14 +8,13 @@ Python 버전의 핵심 기능을 Windows Forms와 .NET 9로 구현한 Windows �
 
 - Windows
 - .NET 9 SDK
-- `CSharp/ant-libs/ANT_Libraries.zip`
+- `ant-libs/ANT_Libraries.zip`
 
 ## BAT 파일로 빌드
 
-탐색기에서 `CSharp/build.bat`을 더블클릭하거나 터미널에서 실행하세요.
+탐색기에서 저장소 루트의 `build.bat`을 더블클릭하거나 터미널에서 실행하세요.
 
 ```bat
-cd CSharp
 build.bat
 ```
 
@@ -28,7 +27,7 @@ BAT 파일은 다음 작업을 자동으로 수행합니다.
 빌드 결과:
 
 ```text
-CSharp\bin\Release\net9.0-windows\win-x86\publish-pc\brainWALK-run.exe
+bin\Release\net9.0-windows\win-x86\publish-pc\brainWALK-run.exe
 ```
 
 게시 폴더의 `brainWALK-run.exe`, `RUN.bat`, ANT DLL, `lidar_config.json`을 함께 사용해야 합니다.
@@ -38,13 +37,13 @@ CSharp\bin\Release\net9.0-windows\win-x86\publish-pc\brainWALK-run.exe
 BAT 파일 대신 저장소 루트에서 직접 실행할 수도 있습니다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File CSharp/build.ps1
+powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
 코드 컴파일만 확인하려면 다음 명령을 사용합니다.
 
 ```powershell
-dotnet build CSharp/BrainWalk.csproj -c Release
+dotnet build BrainWalk.csproj -c Release
 ```
 
 첫 실행 후 설정을 저장하면 게시 폴더의 `lidar_config.json`이 수정됩니다. Python 버전의 설정 파일을 덮어쓰지 않습니다.

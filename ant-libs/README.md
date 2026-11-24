@@ -1,4 +1,4 @@
-The supplied `ANT_Libraries.zip` contains the desktop PC SDK inside a nested ZIP. Run `CSharp/build.ps1` to extract these x86 binaries into `pc/`:
+The supplied `ANT_Libraries.zip` contains the desktop PC SDK inside a nested ZIP. Run `build.ps1` (repository root) to extract these x86 binaries into `pc/`:
 
 - `ANT_NET.dll` (assembly namespace `ANT_Managed_Library`)
 - `ANT_WrappedLib.dll`

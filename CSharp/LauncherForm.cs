@@ -21,6 +21,11 @@ public sealed class LauncherForm : Form
     private readonly Label _guestIdxLabel = new() { ForeColor = LauncherTheme.Green, BackColor = Color.White, TextAlign = ContentAlignment.MiddleCenter, AccessibleName = "게스트 번호" };
     private readonly Label _guestInfoLabel = new() { ForeColor = LauncherTheme.Muted, BackColor = Color.White, TextAlign = ContentAlignment.MiddleCenter };
     private readonly Button _resetGuestButton = new LauncherButton { Text = "다시 만들기" };
+    // 이미 발급받은 게스트 번호를 아는 경우 직접 입력하는 화면.
+    private readonly Panel _guestManual = new() { BackColor = Color.White, Visible = false };
+    private readonly TextBox _manualGuestId = new() { BorderStyle = BorderStyle.None, PlaceholderText = "게스트 번호", AccessibleName = "게스트 번호 직접 입력" };
+    private readonly Button _useGuestIdButton = new LauncherButton { Text = "이 번호로 시작" };
+    private readonly LinkLabel _modeLink = new() { Text = "번호 직접 입력", TextAlign = ContentAlignment.MiddleRight, BackColor = Color.White };
     private string? _guestIdx;
 
     private Process? _pluginProcess;
@@ -48,6 +53,12 @@ public sealed class LauncherForm : Form
         _runButton.Click += async (_, _) => await RunGameAsync();
         _createGuestButton.Click += async (_, _) => await CreateGuestAsync();
         _resetGuestButton.Click += (_, _) => ShowGuestInput(clear: true);
+        _useGuestIdButton.Click += (_, _) => UseManualGuestId();
+        _modeLink.LinkClicked += (_, _) =>
+        {
+            if (_guestManual.Visible) ShowGuestInput(clear: false);
+            else ShowManualInput();
+        };
     }
 
     private void BuildUi()
@@ -69,7 +80,12 @@ public sealed class LauncherForm : Form
         _historyButton.TabIndex = 7;
         card.Controls.Add(_historyButton);
         AddLabel("오늘도, 가볍게 한 걸음.", 32, 68, 424, 46, 22, LauncherTheme.Ink, true);
-        AddLabel("게임과 함께 즐거운 산책을 시작해 보세요.", 36, 121, 412, 28, 10, LauncherTheme.Muted);
+        AddLabel("게임과 함께 즐거운 산책을 시작해 보세요.", 36, 121, 290, 28, 10, LauncherTheme.Muted);
+        _modeLink.SetBounds(328, 121, 120, 28);
+        _modeLink.Font = new Font(Font.FontFamily, 9F, FontStyle.Bold);
+        _modeLink.LinkColor = _modeLink.ActiveLinkColor = LauncherTheme.Green;
+        _modeLink.TabIndex = 8;
+        card.Controls.Add(_modeLink);
         BuildGuestUi(card, new Rectangle(36, 160, 412, 206));
 
         _settingsButton.SetBounds(36, 382, 126, 56);
@@ -95,7 +111,7 @@ public sealed class LauncherForm : Form
 
     private void BuildGuestUi(Control card, Rectangle bounds)
     {
-        _guestInput.Bounds = _guestResult.Bounds = bounds;
+        _guestInput.Bounds = _guestResult.Bounds = _guestManual.Bounds = bounds;
         var inputFont = new Font(Font.FontFamily, 12F);
 
         Label FieldLabel(string text, int y) => new()
@@ -168,7 +184,20 @@ public sealed class LauncherForm : Form
         _resetGuestButton.SetBounds(0, rowGap * 3 + 2, 412, 46);
         _guestResult.Controls.AddRange([resultBox, _resetGuestButton]);
 
-        card.Controls.AddRange([_guestInput, _guestResult]);
+        _manualGuestId.KeyPress += (_, e) => e.Handled = char.IsWhiteSpace(e.KeyChar);
+        var manualHint = new Label
+        {
+            Text = "이미 발급받은 게스트 번호가 있으면 입력해 주세요.", Location = new Point(0, rowGap), Size = new Size(412, 44),
+            TextAlign = ContentAlignment.MiddleLeft, ForeColor = LauncherTheme.Muted, BackColor = Color.White,
+            Font = new Font(Font.FontFamily, 9F)
+        };
+        _useGuestIdButton.SetBounds(0, rowGap * 3 + 2, 412, 46);
+        _useGuestIdButton.TabIndex = 2;
+        _guestManual.Controls.AddRange([
+            FieldLabel("게스트 번호", 0), Field(_manualGuestId, 0, null, 1),
+            manualHint, _useGuestIdButton]);
+
+        card.Controls.AddRange([_guestInput, _guestResult, _guestManual]);
     }
 
     private void ShowGuestInput(bool clear)
@@ -181,10 +210,53 @@ public sealed class LauncherForm : Form
             _guestRestingHr.Text = DefaultRestingHr;
         }
         _guestResult.Visible = false;
+        _guestManual.Visible = false;
         _guestInput.Visible = true;
+        _modeLink.Text = "번호 직접 입력";
         AcceptButton = _createGuestButton;
         _guestName.Focus();
         UpdatePathStatus();
+    }
+
+    private void ShowManualInput()
+    {
+        _guestIdx = null;
+        _guestInput.Visible = false;
+        _guestResult.Visible = false;
+        _guestManual.Visible = true;
+        _modeLink.Text = "새 아이디 만들기";
+        AcceptButton = _useGuestIdButton;
+        _manualGuestId.Focus();
+        _manualGuestId.SelectAll();
+        UpdatePathStatus();
+    }
+
+    private void UseManualGuestId()
+    {
+        string guestId = _manualGuestId.Text.Trim();
+        if (guestId.Length == 0)
+        {
+            MessageBox.Show(this, "게스트 번호를 입력해주세요.", "brainWALK", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            _manualGuestId.Focus();
+            return;
+        }
+
+        // 이 PC에서 만든 번호라면 저장된 정보(이름 등)를 함께 보여준다.
+        GuestRecord? known = null;
+        try { known = GuestHistory.Load().LastOrDefault(r => string.Equals(r.GuestId, guestId, StringComparison.OrdinalIgnoreCase)); }
+        catch { /* 기록을 읽지 못해도 직접 입력한 번호는 그대로 사용한다. */ }
+
+        _guestIdx = guestId;
+        _guestIdxLabel.Text = guestId;
+        _guestInfoLabel.Text = known is null
+            ? "직접 입력한 번호"
+            : $"{known.Name} · {known.Birthday} · 안정시 {known.RestingHr} BPM";
+        _guestManual.Visible = false;
+        _guestResult.Visible = true;
+        _modeLink.Text = "번호 직접 입력";
+        AcceptButton = _runButton;
+        _runButton.Focus();
+        _status.Text = $"●  게스트 번호 {_guestIdx} 사용 · 게임 시작하기를 눌러주세요.";
     }
 
     private async Task CreateGuestAsync()
@@ -232,7 +304,7 @@ public sealed class LauncherForm : Form
             _guestResult.Visible = true;
             AcceptButton = _runButton;
             _runButton.Focus();
-            _status.Text = $"●  게스트 번호 {_guestIdx} 생성 완료 · 게임에서 이 번호로 로그인하세요.";
+            _status.Text = $"●  게스트 번호 {_guestIdx} 생성 완료 · 게임 시작하기를 눌러주세요.";
         }
         catch (Exception ex)
         {
@@ -257,7 +329,9 @@ public sealed class LauncherForm : Form
         _status.Text = !File.Exists(GamePath)
             ? "●  장치 설정 > 설정 탭에서 게임 실행 파일을 선택해 주세요."
             : _guestIdx is null
-                ? "●  이름·생년월일·안정시 심박수를 입력하고 아이디를 생성해 주세요."
+                ? _guestManual.Visible
+                    ? "●  알고 있는 게스트 번호를 입력해 주세요."
+                    : "●  이름·생년월일·안정시 심박수를 입력하고 아이디를 생성해 주세요."
                 : $"●  준비 완료 · 게스트 번호 {_guestIdx} · {Path.GetFileName(GamePath)}";
     }
 
@@ -365,6 +439,18 @@ public sealed class LauncherForm : Form
         return killed;
     }
 
+    private static async Task<PluginStartResult?> WaitForPluginResultAsync(Process plugin, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (PluginStartResult.TryRead() is { } result) return result;
+            if (plugin.HasExited) return PluginStartResult.TryRead();
+            await Task.Delay(200);
+        }
+        return PluginStartResult.TryRead();
+    }
+
     private async Task RunGameAsync()
     {
         if (!File.Exists(GamePath))
@@ -377,8 +463,26 @@ public sealed class LauncherForm : Form
 
         if (_guestIdx is null)
         {
-            MessageBox.Show(this, "먼저 이름·생년월일·안정시 심박수를 입력하고 '아이디 생성'을 눌러주세요.", "brainWALK", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            _guestName.Focus();
+            if (_guestManual.Visible)
+            {
+                // 번호만 입력하고 바로 '게임 시작하기'를 누른 경우도 받아준다.
+                UseManualGuestId();
+                if (_guestIdx is null) return;
+            }
+            else
+            {
+                MessageBox.Show(this, "먼저 아이디를 생성하거나, '번호 직접 입력'으로 게스트 번호를 입력해주세요.", "brainWALK", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                _guestName.Focus();
+                return;
+            }
+        }
+
+        // Femto 카메라는 필수 장치다. 연결되어 있지 않으면 게임을 시작하지 않는다.
+        string femtoVid = _config.Get("femto", "usb_vid", DeviceCheck.DefaultFemtoVendorId);
+        if (!DeviceCheck.IsUsbVendorPresent(femtoVid))
+        {
+            _status.Text = "Femto 카메라가 연결되어 있지 않습니다.";
+            MessageBox.Show(this, "Femto 카메라가 연결되어 있지 않습니다.\nUSB 연결과 전원을 확인한 뒤 다시 시도해주세요.", "brainWALK", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
 
@@ -413,28 +517,48 @@ public sealed class LauncherForm : Form
             }
 
             _status.Text = "플러그인(LiDAR/ANT) 시작 중...";
+            PluginStartResult.Delete();
             _pluginProcess = Process.Start(new ProcessStartInfo(selfPath, "-console") { UseShellExecute = true });
             if (_pluginProcess is null) throw new InvalidOperationException("플러그인 프로세스를 시작하지 못했습니다.");
 
-            // 콘솔 모드는 LiDAR/ANT 연결에 실패하면 바로 종료 코드 1로 끝난다.
-            // 잠시 기다려 본 뒤에도 살아있으면 정상 시작으로 간주한다.
-            await Task.Delay(3000);
+            // LiDAR와 ANT는 선택 장치다. 콘솔 플러그인이 남기는 상태 파일로 연결 결과를 확인하고,
+            // 실패한 장치가 있으면 경고만 띄운 뒤 게임을 계속 진행한다.
+            PluginStartResult? result = await WaitForPluginResultAsync(_pluginProcess, TimeSpan.FromSeconds(15));
+            var failures = new List<string>();
+            if (result is null)
+                failures.Add(_pluginProcess.HasExited
+                    ? $"플러그인이 종료되었습니다 (종료 코드 {_pluginProcess.ExitCode})."
+                    : "LiDAR/ANT 연결 결과를 확인하지 못했습니다.");
+            else
+            {
+                if (result.LidarError is not null) failures.Add($"LiDAR: {result.LidarError}");
+                if (result.AntError is not null) failures.Add($"ANT(심박계): {result.AntError}");
+            }
             if (_pluginProcess.HasExited)
             {
-                _status.Text = $"플러그인 시작 실패 (종료 코드 {_pluginProcess.ExitCode})";
-                MessageBox.Show(this, "LiDAR/ANT 연결에 실패했습니다. 설정을 확인해주세요.", "brainWALK", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 _pluginProcess.Dispose();
                 _pluginProcess = null;
-                return;
+            }
+            if (failures.Count > 0)
+            {
+                _status.Text = "일부 장치가 연결되지 않았습니다. 게임은 계속 진행합니다.";
+                MessageBox.Show(this,
+                    "다음 장치가 연결되지 않았습니다.\n\n" + string.Join("\n", failures.Select(f => "• " + f)) +
+                    "\n\n해당 기능 없이 게임을 시작합니다.",
+                    "brainWALK", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
 
             _status.Text = "게임 실행 중...";
-            Process.Start(new ProcessStartInfo(gamePath)
+            // 게임에 생성된 게스트 번호를 넘겨 해당 게스트로 바로 시작하게 한다: Game.exe -guestid <번호>
+            var gameStart = new ProcessStartInfo(gamePath)
             {
                 UseShellExecute = true,
                 WorkingDirectory = Path.GetDirectoryName(gamePath) ?? ""
-            });
-            _status.Text = $"게임이 실행되었습니다. 게스트 번호 {_guestIdx}로 로그인하세요.";
+            };
+            gameStart.ArgumentList.Add("-guestid");
+            gameStart.ArgumentList.Add(_guestIdx);
+            Process.Start(gameStart);
+            _status.Text = $"게임이 실행되었습니다. (게스트 번호 {_guestIdx})";
         }
         catch (Exception ex)
         {

@@ -21,6 +21,8 @@ internal sealed class AntService : IDisposable
     private EventInfo? _responseEvent;
     private Delegate? _responseHandler;
     private bool _scan;
+    // 채널이 열리면 null, 시작에 실패하면 오류 메시지로 완료된다.
+    private TaskCompletionSource<string?> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly HashSet<AntDevice> _found = [];
     private readonly object _bpmLock = new();
     private DateTime _lastDataAt = DateTime.MinValue;
@@ -48,7 +50,15 @@ internal sealed class AntService : IDisposable
             _zeroPublished = false;
         }
         _stop = new CancellationTokenSource();
+        _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _task = Task.Run(() => Run(scanSeconds, _stop.Token));
+    }
+
+    // ANT 채널이 열릴 때까지 기다린다. 성공하면 null, 실패하면 오류 메시지를 돌려준다.
+    public async Task<string?> WaitReadyAsync(TimeSpan timeout)
+    {
+        var ready = _ready.Task;
+        return await Task.WhenAny(ready, Task.Delay(timeout)) == ready ? await ready : "응답 시간 초과";
     }
 
     private async Task Run(int scanSeconds, CancellationToken token)
@@ -93,13 +103,20 @@ internal sealed class AntService : IDisposable
             else Require(Call(_channel, "openChannel", (uint)500), "channel open");
 
             Status?.Invoke(_scan ? "ANT 장비 검색 중" : "ANT 심박 수신 중");
+            _ready.TrySetResult(null);
             if (_scan) await Task.Delay(TimeSpan.FromSeconds(scanSeconds), token);
             else await WatchBpmTimeoutAsync(token);
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { failed = true; Status?.Invoke($"ANT 오류: {ex.GetBaseException().Message}"); }
+        catch (Exception ex)
+        {
+            failed = true;
+            _ready.TrySetResult(ex.GetBaseException().Message);
+            Status?.Invoke($"ANT 오류: {ex.GetBaseException().Message}");
+        }
         finally
         {
+            _ready.TrySetResult("ANT가 시작 전에 중지되었습니다.");
             if (_responseEvent is not null && _channel is not null && _responseHandler is not null)
                 try { _responseEvent.RemoveEventHandler(_channel, _responseHandler); } catch { }
             if (_channel is not null)

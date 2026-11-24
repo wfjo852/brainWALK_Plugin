@@ -45,8 +45,31 @@ internal static class ConsoleRunner
             Console.WriteLine($"마우스 제어: {(lidar.MouseEnabled ? "사용" : "사용 안 함")}, 드래그: {(lidar.DragEnabled ? "사용" : "사용 안 함")}");
             Console.WriteLine($"ANT: {ant.SelectedDevice}");
 
+            // LiDAR와 ANT는 각각 선택 장치다. 하나가 실패해도 나머지는 계속 동작시키고,
+            // 결과를 상태 파일로 런처에 알려 경고만 띄우고 게임을 진행하게 한다.
             ant.Start();
-            await lidar.StartAsync(port, baudRate, frequency);
+            string? lidarError = null;
+            try
+            {
+                await lidar.StartAsync(port, baudRate, frequency);
+            }
+            catch (Exception ex)
+            {
+                lidarError = ex.GetBaseException().Message;
+                Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss}] LiDAR 연결 실패: {lidarError}");
+            }
+            string? antError = await ant.WaitReadyAsync(TimeSpan.FromSeconds(5));
+            if (antError is not null)
+                Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss}] ANT 연결 실패: {antError}");
+
+            try { new PluginStartResult(lidarError, antError).Write(); }
+            catch (Exception ex) { Console.Error.WriteLine($"상태 파일 기록 실패: {ex.Message}"); }
+
+            if (lidarError is not null && antError is not null)
+            {
+                Console.Error.WriteLine("LiDAR와 ANT가 모두 연결되지 않아 플러그인을 종료합니다.");
+                return 1;
+            }
             await Task.Run(stopped.Wait);
             return 0;
         }

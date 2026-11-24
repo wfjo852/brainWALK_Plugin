@@ -2,6 +2,17 @@
 
 Python 버전의 핵심 기능을 Windows Forms와 .NET 9로 구현한 Windows 앱입니다. LiDAR G4의 시리얼 스캔, 터치 좌표 계산, 마우스 클릭, ANT+ 장비 검색 및 BPM 수신, UDP 전송, JSON 설정 저장을 지원합니다.
 
+## 폴더 구성
+
+| 폴더 | 내용 |
+|---|---|
+| 최상위 | brainWALK 런처 (이 문서) |
+| `minigame/` | Femto Bolt 스켈레톤 에이전트 + 어르신 모션 웹 게임. 따로 빌드·실행합니다 (`minigame/README.md`, 게임 만들기 규칙은 `minigame/GAME_RULEBOOK.md`) |
+
+- `minigame/`은 원래 별도 저장소(femtobolt-minigame)였고, 기록을 그대로 가지고 합쳤습니다 (`git log -- minigame/`).
+- `BrainWalk.csproj`는 `minigame/`을 빌드에서 제외합니다 (`DefaultItemExcludes`).
+- 배포할 때는 런처와 minigame을 함께 묶어 내보냅니다.
+
 ## 빌드 준비
 
 다음 항목이 필요합니다.

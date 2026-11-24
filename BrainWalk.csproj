@@ -9,6 +9,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <PlatformTarget>x86</PlatformTarget>
     <ApplicationIcon>BrainWalk.ico</ApplicationIcon>
+    <!-- minigame/ 은 Femto 에이전트·웹 게임 (따로 빌드: minigame/run.bat). 이 프로젝트에 섞이지 않게 제외 -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);minigame/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <Target Name="CreateApplicationIcon" BeforeTargets="CoreCompile"
